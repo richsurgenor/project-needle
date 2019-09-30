@@ -3,3 +3,4 @@ Thumbs.db
 .idea*
 .idea/*
 needle_env
+__pycache__
