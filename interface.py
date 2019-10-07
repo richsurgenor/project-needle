@@ -12,25 +12,21 @@ Justin Sutherland, Laura Grace Ayers.
 
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot, QSize, QThread, QFile, QTextStream, QPoint
 from PyQt5.QtWidgets import *
-from PyQt5.QtGui import QPixmap, QPainter, QImage
-#from PyQt5.QtCore import QFile, QTextStream, QPoint
-from pyqtgraph import ImageView
-from cv2 import VideoCapture
-#import numpy as np
+from PyQt5.QtGui import QPixmap, QPainter, QImage, QColor
+import cv2
 import sys
 import processor_interface
 import time
 
 MOCK_MODE = 1
 
-IMAGE_SIZE_WIDTH = 400
-IMAGE_SIZE_HEIGHT = 300
+IMAGE_SIZE_WIDTH = 640
+IMAGE_SIZE_HEIGHT = 360
+SCALE_FACTOR = 3
 BORDER_SIZE = 10
 
 def ui_main():
     app = QApplication(sys.argv)
-    #app.setStyle(QStyleFactory.create('Cleanlooks'))
-    #app.setStyleSheet("QLineEdit:disabled{background-color: gray;}
     file = QFile("./dark.qss")
     file.open(QFile.ReadOnly | QFile.Text)
     stream = QTextStream(file)
@@ -57,28 +53,23 @@ class Camera:
     def __init__(self, camera_num):
         self.cap = None
         self.camera_num = camera_num
-        self.last_frame = None
         self.opened = False
 
     def initialize(self):
-        self.cap = VideoCapture(self.camera_num)
+        self.cap = cv2.VideoCapture(self.camera_num)
         self.opened = True
 
     def is_open(self):
         return self.opened
 
-    def get_frame(self):
-        pass
-
     def set_brightness(self, value):
         pass
 
-    def get_frame(self):
-        ret, self.last_frame = self.cap.read()
-        return self.last_frame
-
-    #def get_preview(self):
-    #    self.cap.g
+    def get_frame(self, rbg2rgb=True):
+        ret, frame = self.cap.read()
+        if rbg2rgb:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        return frame
 
     def close_camera(self):
         self.cap.release()
@@ -88,18 +79,25 @@ class Camera:
 
 
 class PreviewThread(QThread):
-    def __init__(self, camera, image_view):
+    def __init__(self, camera, video_frame):
         super().__init__()
         self.camera = camera
-        self.image_view = image_view
+        self.video_frame = video_frame
+
+    def next_frame_slot(self):
+        frame = self.camera.get_frame()
+        img = QImage(frame, frame.shape[1], frame.shape[0], QImage.Format_RGB888)
+        pix = QPixmap.fromImage(img)
+        pix_scaled = pix.scaled(IMAGE_SIZE_WIDTH,IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
+        self.video_frame.setPixmap(pix_scaled)
 
     def run(self):
         while self.camera.is_open():
-            frame = self.camera.get_frame()
-            self.image_view.setImage(frame.T)
+            self.next_frame_slot()
             self.msleep(100)
             qApp.processEvents()
 
+#class GantryThread(QThread):
 
 class QImageBox(QGroupBox):
 
@@ -107,13 +105,58 @@ class QImageBox(QGroupBox):
         super(QGroupBox, self).__init__(text)
         #self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
 
-class QImageGroupBox(QGroupBox):
-    def __init__(self, text, img):
+class QProcessedImageGroupBox(QGroupBox):
+    def __init__(self, parent, text, img):
         super(QGroupBox, self).__init__(text)
-        _layout = QHBoxLayout()
+        self.parent = parent
+        self._layout = QVBoxLayout()
+        self.setLayout(self._layout)
+        self.img = img
+
         self.image_label = QImageLabel("", img)
-        _layout.addWidget(self.image_label)
-        self.setLayout(_layout)
+        self.display_coords = QLabel("Coordinates")
+        self.display_coords.setStyleSheet("font-weight: bold; color: red");
+
+        self._layout.addWidget(self.image_label)
+        self._layout.addWidget(self.display_coords)
+
+        self.points = None
+
+        # Configure mouse press on processed image widget
+        self.image_label.mousePressEvent = self.getPos
+        #self.image_label.connect(self, pyqtSignal("clicked()"), self.getPos)
+
+    def get_layout(self):
+        return self._layout
+
+    def getPos(self, event):
+        # TODO: Reverse scaling to get closet coordinates...
+        selected_x = event.pos().x() - BORDER_SIZE/2
+        selected_y = event.pos().y() - BORDER_SIZE/2
+        selected_point = (selected_x, selected_y)
+
+        best_x = 10000
+        best_y = 10000
+        chosen = -1
+        # check closest point
+        for i in range(0, len(self.points)):
+            point = self.points[i]
+            x,y = point
+            #x -= 54
+            x += 31
+            y += 16
+            diff_x = abs(selected_x - x)
+            diff_y = abs(selected_x - y)
+            diff_sum = diff_x + diff_y
+            if diff_sum < best_x+best_y:
+                best_x = diff_x
+                best_y = diff_y
+                chosen = i
+        print("best_x: " + str(best_x) + " best_y: " + str(best_y))
+        print("diff_x: " + str(selected_x - x) + " diff_y: " + str(selected_x - y))
+        self.display_coords.setText("x: " + str(selected_x) + " y: " + str(selected_y))
+        self.parent.draw_processed_img(self.image_label.img, self.points, chosen)
+
 
 class QImageLabel(QLabel):
     def __init__(self, _, img):
@@ -123,15 +166,15 @@ class QImageLabel(QLabel):
         self.setFrameShadow(QFrame.Raised)
         self.setLineWidth(3)
         self.setMidLineWidth(3)
-        self.mousePressEvent = self.getPos
+        #self.mousePressEvent = self.getPos
         self.img = img
         self.setSizePolicy(QSizePolicy.Fixed,QSizePolicy.Fixed)
         self.done = False
 
     #def paintEvent(self, e):
     #    QLabel.paintEvent
-    def enable(self):
-        self.done = True
+    def set_status(self, status):
+        self.done = status
         self.repaint()
         #self.pain
         #p = QPainter(self)
@@ -144,10 +187,6 @@ class QImageLabel(QLabel):
         if self.done:
             p.drawPixmap(QPoint(BORDER_SIZE/2, BORDER_SIZE/2), self.img)
         #print(self.img.size())
-
-    def getPos(self, event):
-        # TODO: Reverse scaling to get closet coordinates...
-        print("x: " + str(event.pos().x()) + "\ny: " + str(event.pos().y()))
 
     def sizeHint(self):
         return QSize(IMAGE_SIZE_WIDTH + BORDER_SIZE, IMAGE_SIZE_HEIGHT + BORDER_SIZE)
@@ -178,55 +217,26 @@ class MainWindow(QMainWindow):
         self.pic_widget = QImageBox("Image View")
         self.pics_hbox = QHBoxLayout(self.pic_widget)
         self.pics_hbox.setAlignment(Qt.AlignHCenter);
-        self.pics_hbox.setSpacing(100)
+        self.pics_hbox.setSpacing(10)
         self.pic_widget.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
 
-        #self.image_box = QImageBox()
-        #_layout = QLayout()
+        self.video_frame = QLabel()
+        self.input_box = QGroupBox("Input Image") #QImageGroupBox("Input Image", self.video_frame)
+        self.input_box_status = QLabel("Change Camera: ")
 
-        #_img = QPixmap("image3.jpg")
-        #img = _img.scaled(400, 400, Qt.KeepAspectRatio)
-        #self.lb = QImageLabel(self, img)
-        #pixmap_og = QPixmap("image3.jpg")
-        #pixmap_og_scaled = pixmap_og.scaled(400,400, Qt.KeepAspectRatio)
+        input_box_layout = QVBoxLayout()
+        self.input_box.setLayout(input_box_layout)
 
+        input_box_layout.addWidget(self.video_frame)
+        input_box_layout.addWidget(self.input_box_status)
+        self.pics_hbox.addWidget(self.input_box) #(self.lb)
 
-        #self.lb.setPixmap(pixmap_og_scaled)
-
-
-        self.image_view = ImageView()
-        self.pics_hbox.addWidget(self.image_view) #(self.lb)
-        self.feed = PreviewThread(self.camera, self.image_view)
+        self.feed = PreviewThread(self.camera, self.video_frame)
         self.feed.start()
-        x = self.camera.get_frame().T
 
         # Convert numpy img to pixmap
-        cv_img = self.camera.get_frame().T
-        height, width, channel = cv_img.shape
-        bytes_per_line = 3 * width
-        q_img = QImage(cv_img.copy().data, width, height, bytes_per_line, QImage.Format_RGB888)
-        processed_img = QPixmap.fromImage(q_img)
-        # Create Overlay Img with Transparency
-        overlay_img = QPixmap("transparent_reticle.png")
-        overlay_alpha = QPixmap(overlay_img.size())
-        overlay_alpha.fill(Qt.transparent)  # force alpha channel
-        # Paint overlay_img onto overlay_alpha
-        painter = QPainter(overlay_alpha)
-        painter.drawPixmap(0, 0, overlay_img)
-        painter.end()
 
-        #processed_img = QPixmap("image3_results_n1.jpg")
-        processed_img_scaled = processed_img.scaled(IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
-        overlay_scaled = overlay_alpha.scaled(55, 55, Qt.KeepAspectRatio)
-        result = QPixmap(processed_img_scaled.width(), processed_img_scaled.height())
-        result.fill(Qt.transparent) # force alpha channel
-        painter = QPainter(result)
-        # Paint final images on result
-        painter.drawPixmap(0, 0, processed_img_scaled)
-        painter.drawPixmap(100, 100, overlay_scaled)
-        painter.end()
-
-        self.output_box = QImageGroupBox("Processed Image", result)
+        self.output_box = QProcessedImageGroupBox(self, "Processed Image", None)
        #self.lb2.setPixmap(self.result)
         #self.lb2.setObjectName("lb2")
 
@@ -238,7 +248,9 @@ class MainWindow(QMainWindow):
         btn_process_img = QPushButton("Process Image")
         btn_process_img.clicked.connect(self.process_image_event)
         btn_reset = QPushButton("Reset")
+        btn_reset.clicked.connect(self.reset_event)
         btn_calibrate = QPushButton("Calibrate")
+        btn_calibrate.clicked.connect(self.calibrate_event)
 
         self.btn_widget = QWidget()
         btn_panel = _createCntrBtn(btn_process_img, btn_reset, btn_calibrate)
@@ -248,20 +260,60 @@ class MainWindow(QMainWindow):
 
         self.show()
 
+    """
+    Events
+    """
+
+    def draw_processed_img(self, processed_img_scaled, points, chosen):
+        # Create Overlay Img with Transparency
+        overlay_img = QPixmap("transparent_reticle.png")
+        overlay_alpha = QPixmap(overlay_img.size())
+        overlay_alpha.fill(Qt.transparent)  # force alpha channel
+        # Paint overlay_img onto overlay_alpha
+        overlay_alpha_cpy = overlay_alpha.copy()
+        painter = QPainter(overlay_alpha)
+        painter.drawPixmap(0, 0, overlay_img)
+        painter.end()
+
+        painter = QPainter(overlay_alpha_cpy)
+        mask = overlay_img.createMaskFromColor(Qt.transparent, Qt.MaskInColor)
+        painter.setPen(QColor(0, 255, 0))
+        painter.drawPixmap(overlay_alpha.rect(), mask, mask.rect())
+        painter.end()
+
+        # processed_img = QPixmap("image3_results_n1.jpg")
+        overlay_scaled = overlay_alpha.scaled(55, 55, Qt.KeepAspectRatio)
+        overlay_scaled_green = overlay_alpha_cpy.scaled(55, 55, Qt.KeepAspectRatio)
+        result = QPixmap(processed_img_scaled.width(), processed_img_scaled.height())
+        result.fill(Qt.transparent)  # force alpha channel
+        painter = QPainter(result)
+        # Paint final images on result
+        painter.drawPixmap(0, 0, processed_img_scaled)
+        for i in range(0, len(points)):
+            point = points[i]
+            if i == chosen:
+                painter.drawPixmap(point[0] + BORDER_SIZE / 2, point[1] + BORDER_SIZE / 2, overlay_scaled_green)
+            else:
+                painter.drawPixmap(point[0] + BORDER_SIZE / 2, point[1] + BORDER_SIZE / 2, overlay_scaled)
+        painter.end()
+        self.output_box.points = points
+        self.output_box.image_label.img = result
+        self.output_box.image_label.set_status(True)
+
     def process_image_event(self):
-        self.processor.process_image(self.camera.get_frame()) # TODO : add input img from camera
-        self.output_box.image_label.enable()
-            
         print("Processing...")
+        cv_img, points = self.processor.process_image(self.camera.get_frame())
+        points_scaled = []
+        height, width, channel = cv_img.shape
+        bytes_per_line = 3 * width
+        q_img = QImage(cv_img.copy().data, width, height, bytes_per_line, QImage.Format_RGB888)
+        processed_img = QPixmap.fromImage(q_img)
+        processed_img_scaled = processed_img.scaled(IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
+        scaled_points = [(x / SCALE_FACTOR, y / SCALE_FACTOR) for x, y in points]
+        self.draw_processed_img(processed_img_scaled, scaled_points, -1)
 
+    def reset_event(self):
+        self.output_box.image_label.set_status(False)
 
-
-        #self.lb.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        #self.lb.setSizeP
-        #self.pics_hbox.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        #self.pics_hbox.addWidget(self.lb)
-
-
-
-
-        #self._layout.addLayout(_createCntrBtn())
+    def calibrate_event(self):
+        QMessageBox.information(None, 'Calibration', 'Wow!', QMessageBox.Ok)
