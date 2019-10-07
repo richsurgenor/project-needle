@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QPixmap, QPainter, QImage, QColor
 import cv2
 import sys
-import processor_interface
+import api
 
 MOCK_MODE = 1
 
@@ -30,7 +30,7 @@ def ui_main():
     :return: None
     """
     app = QApplication(sys.argv)
-    file = QFile("./dark.qss")
+    file = QFile("./assets/dark.qss")
     file.open(QFile.ReadOnly | QFile.Text)
     stream = QTextStream(file)
     app.setStyleSheet(stream.readAll())
@@ -47,9 +47,9 @@ def _createCntrBtn(*args):
 
 def get_processor(camera):
     if MOCK_MODE:
-        return processor_interface.ProcessorMock(camera)
+        return api.ProcessorMock(camera)
     else:
-        return processor_interface.Processor(camera)
+        return api.Processor(camera)
 
 
 class Camera:
@@ -266,7 +266,7 @@ class MainWindow(QMainWindow):
         :return: currently None
         """
         # Create Overlay Img with Transparency
-        overlay_img = QPixmap("transparent_reticle.png")
+        overlay_img = QPixmap("assets/transparent_reticle.png")
         overlay_alpha = QPixmap(overlay_img.size())
         overlay_alpha.fill(Qt.transparent)  # force alpha channel
         # Paint overlay_img onto overlay_alpha
