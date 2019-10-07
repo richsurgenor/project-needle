@@ -16,7 +16,6 @@ from PyQt5.QtGui import QPixmap, QPainter, QImage, QColor
 import cv2
 import sys
 import processor_interface
-import time
 
 MOCK_MODE = 1
 
@@ -26,6 +25,10 @@ SCALE_FACTOR = 3
 BORDER_SIZE = 10
 
 def ui_main():
+    """
+    Initialize main UI
+    :return: None
+    """
     app = QApplication(sys.argv)
     file = QFile("./dark.qss")
     file.open(QFile.ReadOnly | QFile.Text)
@@ -79,6 +82,9 @@ class Camera:
 
 
 class PreviewThread(QThread):
+    """
+    Thread for the input image.
+    """
     def __init__(self, camera, video_frame):
         super().__init__()
         self.camera = camera
@@ -94,7 +100,7 @@ class PreviewThread(QThread):
     def run(self):
         while self.camera.is_open():
             self.next_frame_slot()
-            self.msleep(100)
+            self.msleep(100) # TODO: make this settable
             qApp.processEvents()
 
 #class GantryThread(QThread):
@@ -142,7 +148,7 @@ class QProcessedImageGroupBox(QGroupBox):
         for i in range(0, len(self.points)):
             point = self.points[i]
             x,y = point
-            #x -= 54
+            # TODO: fix
             x += 31
             y += 16
             diff_x = abs(selected_x - x)
@@ -171,14 +177,9 @@ class QImageLabel(QLabel):
         self.setSizePolicy(QSizePolicy.Fixed,QSizePolicy.Fixed)
         self.done = False
 
-    #def paintEvent(self, e):
-    #    QLabel.paintEvent
     def set_status(self, status):
         self.done = status
         self.repaint()
-        #self.pain
-        #p = QPainter(self)
-        #p.drawPixmap(QPoint(BORDER_SIZE / 2, BORDER_SIZE / 2), self.img)
 
     def paintEvent(self, e):
         QLabel.paintEvent(self, e)
@@ -230,21 +231,14 @@ class MainWindow(QMainWindow):
         input_box_layout.addWidget(self.video_frame)
         input_box_layout.addWidget(self.input_box_status)
         self.pics_hbox.addWidget(self.input_box) #(self.lb)
-
         self.feed = PreviewThread(self.camera, self.video_frame)
         self.feed.start()
 
-        # Convert numpy img to pixmap
-
         self.output_box = QProcessedImageGroupBox(self, "Processed Image", None)
-       #self.lb2.setPixmap(self.result)
-        #self.lb2.setObjectName("lb2")
-
-        #self.lb2.resize(400,400)
         self.pics_hbox.addWidget(self.output_box)
         self._layout.addWidget(self.pic_widget)
+
         # buttons
-        
         btn_process_img = QPushButton("Process Image")
         btn_process_img.clicked.connect(self.process_image_event)
         btn_reset = QPushButton("Reset")
@@ -263,8 +257,14 @@ class MainWindow(QMainWindow):
     """
     Events
     """
+    def draw_processed_img(self, processed_img_scaled, scaled_points, chosen):
+        """
 
-    def draw_processed_img(self, processed_img_scaled, points, chosen):
+        :param processed_img_scaled: scaled version of image
+        :param scaled_points: scaled points
+        :param chosen: index of point chosen from list of scaled_points
+        :return: currently None
+        """
         # Create Overlay Img with Transparency
         overlay_img = QPixmap("transparent_reticle.png")
         overlay_alpha = QPixmap(overlay_img.size())
@@ -289,21 +289,24 @@ class MainWindow(QMainWindow):
         painter = QPainter(result)
         # Paint final images on result
         painter.drawPixmap(0, 0, processed_img_scaled)
-        for i in range(0, len(points)):
-            point = points[i]
+        for i in range(0, len(scaled_points)):
+            point = scaled_points[i]
             if i == chosen:
                 painter.drawPixmap(point[0] + BORDER_SIZE / 2, point[1] + BORDER_SIZE / 2, overlay_scaled_green)
             else:
                 painter.drawPixmap(point[0] + BORDER_SIZE / 2, point[1] + BORDER_SIZE / 2, overlay_scaled)
         painter.end()
-        self.output_box.points = points
+        self.output_box.points = scaled_points
         self.output_box.image_label.img = result
         self.output_box.image_label.set_status(True)
 
     def process_image_event(self):
+        """
+        Receive processed image and use the received points to display a final image.
+        :return: None
+        """
         print("Processing...")
         cv_img, points = self.processor.process_image(self.camera.get_frame())
-        points_scaled = []
         height, width, channel = cv_img.shape
         bytes_per_line = 3 * width
         q_img = QImage(cv_img.copy().data, width, height, bytes_per_line, QImage.Format_RGB888)
@@ -314,6 +317,8 @@ class MainWindow(QMainWindow):
 
     def reset_event(self):
         self.output_box.image_label.set_status(False)
+        # TODO: actually make this reset the entire state of the GUI
 
     def calibrate_event(self):
         QMessageBox.information(None, 'Calibration', 'Wow!', QMessageBox.Ok)
+        # TODO: deem if this is a necessary functionality or if we will keep it in arduino code
