@@ -87,18 +87,8 @@ def apply_mask_brute_force(img, mask_in):
     return temp_img
 
 
-if __name__ == "__main__":
-    # Parse the command line arguments
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-i', action='store', dest='fname', help='Image filename')
-    parser.add_argument('-t', action='store_true', default=False, dest='test_array',
-                        help='Test the timing of threshold operations')
-    results = parser.parse_args()
+def process_image_get_mask(img_in, test_array):
     total_time = 0
-
-    # Read in the image
-    img_in = cv2.imread(results.fname, 0)
-
     # Apply CLAHE to the image
     start = time.time()
     clahe_img = apply_clahe(img_in, 5.0, (8, 8))
@@ -122,7 +112,7 @@ if __name__ == "__main__":
 
     # Apply the mask using array operations (comparing each pixel of the mask with
     # each pixel of the image
-    if results.test_array:
+    if test_array:
         start = time.time()
         tmp = np.copy(adapt_mean_th)  # Prevents adapt_mean_thresh from being overwritten
         masked_img = apply_mask_brute_force(tmp, mask)
@@ -139,15 +129,35 @@ if __name__ == "__main__":
         print("Time to apply mask using Numpy where: ", (end - start), "s")
 
     print("Total time elapsed", total_time, "s")
-
-    # Plot all steps of the vein enhancement process
     images = [img_in, clahe_img, mask, adapt_mean_th, masked_img]
     titles = ["Original Image", "CLAHE", "Image Mask", "Adaptive Mean Thresholding", "Masked Image"]
-    for i in range(1, 6):
-        plt.subplot(5, 1, i)
-        plt.imshow(images[i - 1], 'gray')
-        plt.title(titles[i - 1])
-    plt.show()
-    plt.clf()
+
+    if __name__ != "__main__":
+        return images[4]
+    else:
+        # Plot all steps of the vein enhancement process
+        images = [img_in, clahe_img, mask, adapt_mean_th, masked_img]
+        titles = ["Original Image", "CLAHE", "Image Mask", "Adaptive Mean Thresholding", "Masked Image"]
+        for i in range(1, 6):
+            plt.subplot(5, 1, i)
+            plt.imshow(images[i - 1], 'gray')
+            plt.title(titles[i - 1])
+        plt.show()
+        plt.clf()
+
+
+if __name__ == "__main__":
+    # Parse the command line arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-i', action='store', dest='fname', help='Image filename')
+    parser.add_argument('-t', action='store_true', default=False, dest='test_array',
+                        help='Test the timing of threshold operations')
+    results = parser.parse_args()
+
+    # Read in the image
+    img_in = cv2.imread(results.fname, 0)
+
+    test_array = results.test_array
+    process_image_get_mask(img_in, test_array)
 
 

@@ -17,7 +17,8 @@ import cv2
 import sys
 import api
 
-MOCK_MODE = 1
+MOCK_MODE_IMAGE_PROCESSING = 0
+MOCK_MODE_GANTRY = 1
 
 IMAGE_SIZE_WIDTH = 640
 IMAGE_SIZE_HEIGHT = 360
@@ -46,7 +47,7 @@ def _createCntrBtn(*args):
     return l
 
 def get_processor(camera):
-    if MOCK_MODE:
+    if MOCK_MODE_IMAGE_PROCESSING:
         return api.ProcessorMock(camera)
     else:
         return api.Processor(camera)
@@ -306,7 +307,10 @@ class MainWindow(QMainWindow):
         :return: None
         """
         print("Processing...")
-        cv_img, points = self.processor.process_image(self.camera.get_frame())
+        img = self.camera.get_frame()
+        greyimg = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        cv_img_grey, points = self.processor.process_image(greyimg)
+        cv_img = cv2.cvtColor(cv_img_grey, cv2.COLOR_GRAY2RGB)
         height, width, channel = cv_img.shape
         bytes_per_line = 3 * width
         q_img = QImage(cv_img.copy().data, width, height, bytes_per_line, QImage.Format_RGB888)

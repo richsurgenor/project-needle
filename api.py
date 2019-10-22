@@ -1,6 +1,7 @@
 # Abstract interface for GUI to use
 
 from abc import abstractmethod
+from image_processing.thresholding import process_image_get_mask
 
 class AbstractProcessor:
 
@@ -75,7 +76,8 @@ class ProcessorMock(AbstractProcessor):
 class Processor(AbstractProcessor):
 
     def process_image(self, image):
-        pass
+        process_image_get_mask(image, True)
+        return image, [(320 * 3, 120 * 3), (481 * 3, 233 * 3), (179 * 3, 211 * 3)]
 
 
 
