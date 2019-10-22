@@ -16,12 +16,14 @@ from PyQt5.QtGui import QPixmap, QPainter, QImage, QColor
 import cv2
 import sys
 import api
+import time
 
-MOCK_MODE = 1
+MOCK_MODE_IMAGE_PROCESSING = 1
+MOCK_MODE_GANTRY = 1
 
 IMAGE_SIZE_WIDTH = 640
 IMAGE_SIZE_HEIGHT = 360
-SCALE_FACTOR = 3
+SCALE_FACTOR = 3 #TODO: scale factor could be auto-calced..
 BORDER_SIZE = 10
 
 def ui_main():
@@ -33,7 +35,7 @@ def ui_main():
     file = QFile("./assets/dark.qss")
     file.open(QFile.ReadOnly | QFile.Text)
     stream = QTextStream(file)
-    app.setStyleSheet(stream.readAll())
+    #app.setStyleSheet(stream.readAll())
     ui = MainWindow()
     sys.exit(app.exec_())
 
@@ -46,11 +48,16 @@ def _createCntrBtn(*args):
     return l
 
 def get_processor(camera):
-    if MOCK_MODE:
+    if MOCK_MODE_IMAGE_PROCESSING:
         return api.ProcessorMock(camera)
     else:
         return api.Processor(camera)
 
+def get_controller():
+    if MOCK_MODE_GANTRY:
+        return api.GantryControllerMock()
+    else:
+        return api.GantryController()
 
 class Camera:
     def __init__(self, camera_num):
@@ -79,6 +86,34 @@ class Camera:
 
     def __str__(self):
         return 'OpenCV Camera {}'.format(self.camera_num)
+
+class StatusThread(QThread):
+    """
+    Thread maintaining status assets, because if main thread is halted qt will be nonoperational.
+    """
+
+    def __init__(self, status):
+        super().__init__()
+        self.status = status
+        self.gc = api.GantryControllerMock()
+        self.gc.start()
+
+    def run(self):
+        self.status.showMessage("STATUS: Connecting to Gantry..")
+
+        self.status.showMessage("STATUS: Sending Gantry Home..")
+        self.gc.mutex.acquire()
+        self.gc.mode = 1
+        self.gc.mutex.release()
+
+        while not self.gc.gantry.is_home():
+            pass
+
+        self.status.showMessage("STATUS: Gantry is Home..")
+        self.msleep(1000)
+        self.status.showMessage("STATUS: Waiting for user input..")
+        # self.gc.send_gantry_home()
+
 
 
 class PreviewThread(QThread):
@@ -139,7 +174,6 @@ class QProcessedImageGroupBox(QGroupBox):
         # TODO: Reverse scaling to get closet coordinates...
         selected_x = event.pos().x() - BORDER_SIZE/2
         selected_y = event.pos().y() - BORDER_SIZE/2
-        selected_point = (selected_x, selected_y)
 
         best_x = 10000
         best_y = 10000
@@ -149,17 +183,20 @@ class QProcessedImageGroupBox(QGroupBox):
             point = self.points[i]
             x,y = point
             # TODO: fix
+
+            #estimated center of the reticle..
             x += 31
-            y += 16
+            y += 35
+
             diff_x = abs(selected_x - x)
             diff_y = abs(selected_x - y)
             diff_sum = diff_x + diff_y
             if diff_sum < best_x+best_y:
                 best_x = diff_x
                 best_y = diff_y
+                print("diff_x: " + str(selected_x - x) + " diff_y: " + str(selected_y - y))
                 chosen = i
         print("best_x: " + str(best_x) + " best_y: " + str(best_y))
-        print("diff_x: " + str(selected_x - x) + " diff_y: " + str(selected_x - y))
         self.display_coords.setText("x: " + str(selected_x) + " y: " + str(selected_y))
         self.parent.draw_processed_img(self.image_label.img, self.points, chosen)
 
@@ -211,8 +248,12 @@ class MainWindow(QMainWindow):
         self.wid.setLayout(self._layout)
 
         self.status = QStatusBar()
-        self.status.showMessage("STATUS: pending user input..")
         self._layout.addWidget(self.status)
+
+        self.checkbox = QCheckBox("Automatic Mode")
+        self.checkbox.setCheckState(Qt.Checked)
+        #self.checkbox.initStyleOption
+        self._layout.addWidget(self.checkbox)
 
         #self._layout.addWidget(self.centralWidget)
         self.pic_widget = QImageBox("Image View")
@@ -234,12 +275,15 @@ class MainWindow(QMainWindow):
         self.feed = PreviewThread(self.camera, self.video_frame)
         self.feed.start()
 
+        self.status_thread = StatusThread(self.status)
+        self.status_thread.start()
+
         self.output_box = QProcessedImageGroupBox(self, "Processed Image", None)
         self.pics_hbox.addWidget(self.output_box)
         self._layout.addWidget(self.pic_widget)
 
         # buttons
-        btn_process_img = QPushButton("Process Image")
+        btn_process_img = QPushButton("Capture Image")
         btn_process_img.clicked.connect(self.process_image_event)
         btn_reset = QPushButton("Reset")
         btn_reset.clicked.connect(self.reset_event)
@@ -253,6 +297,7 @@ class MainWindow(QMainWindow):
         self._layout.addWidget(self.btn_widget)
 
         self.show()
+
 
     """
     Events
