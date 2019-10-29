@@ -13,6 +13,7 @@ Justin Sutherland, Laura Grace Ayers.
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot, QSize, QThread, QFile, QTextStream, QPoint
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QPixmap, QPainter, QImage, QColor
+import numpy
 import cv2
 import sys
 import api
@@ -22,9 +23,13 @@ MOCK_MODE_IMAGE_PROCESSING = 1
 MOCK_MODE_GANTRY = 1
 
 IMAGE_SIZE_WIDTH = 640
-IMAGE_SIZE_HEIGHT = 360
+IMAGE_SIZE_HEIGHT = 368
 SCALE_FACTOR = 3 #TODO: scale factor could be auto-calced..
 BORDER_SIZE = 10
+
+USING_PI = 1
+if USING_PI:
+    import picamera
 
 def ui_main():
     """
@@ -87,6 +92,35 @@ class Camera:
     def __str__(self):
         return 'OpenCV Camera {}'.format(self.camera_num)
 
+class PiCam(picamera.PiCamera):
+    def __init__(self):
+        self.cap = None
+        self.opened = False
+        self.image = None
+
+    def initialize(self):
+        self.resolution = (IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT)
+        self.framerate = 24
+        self.opened = True
+        #time.sleep(2)
+        self.image = numpy.empty((240, 320, 3), dtype=numpy.uint8)
+        self.capture(self.image, 'bgr')
+
+    def is_open(self):
+        return self.opened
+
+    def set_brightness(self, value):
+        pass
+
+    def get_frame(self, rbg2rgb=True):
+        return self.image
+
+    def close_camera(self):
+        self.close()
+
+    def __str__(self):
+        return 'PiCamera'
+
 class StatusThread(QThread):
     """
     Thread maintaining status assets, because if main thread is halted qt will be nonoperational.
@@ -96,7 +130,7 @@ class StatusThread(QThread):
         super().__init__()
         self.status = status
         self.gc = api.GantryControllerMock()
-        self.gc.start()
+        #self.gc.start()
 
     def run(self):
         self.status.showMessage("STATUS: Connecting to Gantry..")
@@ -125,20 +159,34 @@ class PreviewThread(QThread):
         self.camera = camera
         self.video_frame = video_frame
 
-    def next_frame_slot(self):
-        frame = self.camera.get_frame()
+    def next_frame_slot(self, frame):
+        #frame = self.camera.get_frame()
         img = QImage(frame, frame.shape[1], frame.shape[0], QImage.Format_RGB888)
         pix = QPixmap.fromImage(img)
-        pix_scaled = pix.scaled(IMAGE_SIZE_WIDTH,IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
-        self.video_frame.setPixmap(pix_scaled)
+        #pix_scaled = pix.scaled(IMAGE_SIZE_WIDTH,IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
+        self.video_frame.setPixmap(pix)
 
     def run(self):
-        while self.camera.is_open():
-            self.next_frame_slot()
-            self.msleep(100) # TODO: make this settable
-            qApp.processEvents()
+        with picamera.PiCamera() as cam:
+            self.camera = cam
+            #cam.initialize()
 
-#class GantryThread(QThread):
+            '''initialize'''
+            self.camera.resolution = (IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT)
+            self.camera.framerate = 24
+            #self.opened = True
+            # time.sleep(2)
+            self.image = numpy.empty((IMAGE_SIZE_HEIGHT, IMAGE_SIZE_WIDTH, 3), dtype=numpy.uint8)
+
+
+            self.msleep(2000)
+            while True:
+                self.camera.capture(self.image, 'rgb')
+                self.camera.awb_mode = 'flash'
+                self.next_frame_slot(self.image)
+                self.msleep(400) # TODO: make this settable
+                qApp.processEvents()
+
 
 class QImageBox(QGroupBox):
 
@@ -237,8 +285,15 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super(QMainWindow, self).__init__()
         #self.resize(1200, 800)
-        self.camera = Camera(0)
+        '''
+        if USING_PI:
+            self.camera = PiCam()
+        else:
+            self.camera = Camera(0)
+        
         self.camera.initialize()
+        '''
+        self.camera = None
         self.processor = get_processor(self.camera)
         self.wid = QWidget(self)
         self.setCentralWidget(self.wid)
