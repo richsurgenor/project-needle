@@ -25,9 +25,12 @@ from pivideostream import PiVideoStream
 MOCK_MODE_IMAGE_PROCESSING = 1
 MOCK_MODE_GANTRY = 1
 
-IMAGE_SIZE_WIDTH = 640 
-IMAGE_SIZE_HEIGHT = 368 
-SCALE_FACTOR = 3 #TODO: scale factor could be auto-calced..
+CAMERA_RESOLUTION_WIDTH = 1920
+CAMERA_RESOLUTION_HEIGHT = 1080
+
+IMAGE_SIZE_WIDTH = 960 #640
+IMAGE_SIZE_HEIGHT = 540 #368
+SCALE_FACTOR = 2 #TODO: scale factor could be auto-calced..
 BORDER_SIZE = 10
 
 USING_PI = os.uname()[4][:3] == 'arm'
@@ -41,7 +44,7 @@ def ui_main():
     file = QFile("./assets/dark.qss")
     file.open(QFile.ReadOnly | QFile.Text)
     stream = QTextStream(file)
-    #app.setStyleSheet(stream.readAll())
+    app.setStyleSheet(stream.readAll())
     ui = MainWindow()
     sys.exit(app.exec_())
 
@@ -73,6 +76,7 @@ class Camera:
 
     def start(self):
         self.cap = cv2.VideoCapture(self.camera_num)
+        self.set_resolution(CAMERA_RESOLUTION_WIDTH, CAMERA_RESOLUTION_HEIGHT)
         self.opened = True
 
     def is_open(self):
@@ -80,6 +84,10 @@ class Camera:
 
     def set_brightness(self, value):
         pass
+
+    def set_resolution(self, width, height):
+        self.cap.set(cv2.CV_CAP_PROP_FRAME_WIDTH, width)
+        self.cap.set(cv2.CV_CAP_PROP_FRAME_HEIGHT, height)
 
     def get_frame(self, rbg2rgb=True):
         ret, frame = self.cap.read()
@@ -140,8 +148,8 @@ class PreviewThread(QThread):
             return
         img = QImage(frame, frame.shape[1], frame.shape[0], QImage.Format_RGB888)
         pix = QPixmap.fromImage(img)
-        if not USING_PI:
-            pix = pix.scaled(IMAGE_SIZE_WIDTH,IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
+        #if not USING_PI:
+        pix = pix.scaled(IMAGE_SIZE_WIDTH,IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
         self.video_frame.setPixmap(pix)
 
     def run(self):
@@ -256,7 +264,7 @@ class MainWindow(QMainWindow):
         #self.resize(1200, 800)
 
         if USING_PI:
-            self.camera = PiVideoStream()
+            self.camera = PiVideoStream(resolution=(CAMERA_RESOLUTION_WIDTH, CAMERA_RESOLUTION_HEIGHT))
         else:
             self.camera = Camera(0)
 
@@ -377,9 +385,11 @@ class MainWindow(QMainWindow):
         """
         print("Processing...")
         cv_img, points = self.processor.process_image(self.camera.get_frame())
+        cv_img_bgr = cv2.cvtColor(cv_img, cv2.COLOR_RGB2BGR)
         height, width, channel = cv_img.shape
         bytes_per_line = 3 * width
         q_img = QImage(cv_img.copy().data, width, height, bytes_per_line, QImage.Format_RGB888)
+        cv2.imwrite('gui-rawimg.jpg', cv_img_bgr)
         processed_img = QPixmap.fromImage(q_img)
         processed_img_scaled = processed_img.scaled(IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
         scaled_points = [(x / SCALE_FACTOR, y / SCALE_FACTOR) for x, y in points]
