@@ -30,7 +30,7 @@ IMAGE_SIZE_HEIGHT = 368
 SCALE_FACTOR = 3 #TODO: scale factor could be auto-calced..
 BORDER_SIZE = 10
 
-USING_PI = 0
+USING_PI = os.uname()[4][:3] == 'arm'
 if USING_PI:
     import picamera
 
