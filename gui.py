@@ -18,6 +18,9 @@ import cv2
 import sys
 import api
 import time
+import os
+
+from pivideostream import PiVideoStream
 
 MOCK_MODE_IMAGE_PROCESSING = 1
 MOCK_MODE_GANTRY = 1
@@ -27,7 +30,7 @@ IMAGE_SIZE_HEIGHT = 368
 SCALE_FACTOR = 3 #TODO: scale factor could be auto-calced..
 BORDER_SIZE = 10
 
-USING_PI = 1
+USING_PI = 0
 if USING_PI:
     import picamera
 
@@ -70,7 +73,7 @@ class Camera:
         self.camera_num = camera_num
         self.opened = False
 
-    def initialize(self):
+    def start(self):
         self.cap = cv2.VideoCapture(self.camera_num)
         self.opened = True
 
@@ -92,34 +95,6 @@ class Camera:
     def __str__(self):
         return 'OpenCV Camera {}'.format(self.camera_num)
 
-class PiCam(picamera.PiCamera):
-    def __init__(self):
-        self.cap = None
-        self.opened = False
-        self.image = None
-
-    def initialize(self):
-        self.resolution = (IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT)
-        self.framerate = 24
-        self.opened = True
-        #time.sleep(2)
-        self.image = numpy.empty((240, 320, 3), dtype=numpy.uint8)
-        self.capture(self.image, 'bgr')
-
-    def is_open(self):
-        return self.opened
-
-    def set_brightness(self, value):
-        pass
-
-    def get_frame(self, rbg2rgb=True):
-        return self.image
-
-    def close_camera(self):
-        self.close()
-
-    def __str__(self):
-        return 'PiCamera'
 
 class StatusThread(QThread):
     """
@@ -159,33 +134,19 @@ class PreviewThread(QThread):
         self.camera = camera
         self.video_frame = video_frame
 
-    def next_frame_slot(self, frame):
-        #frame = self.camera.get_frame()
+    def next_frame_slot(self):
+        frame = self.camera.get_frame()
         img = QImage(frame, frame.shape[1], frame.shape[0], QImage.Format_RGB888)
         pix = QPixmap.fromImage(img)
-        #pix_scaled = pix.scaled(IMAGE_SIZE_WIDTH,IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
+        if not USING_PI:
+            pix = pix.scaled(IMAGE_SIZE_WIDTH,IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
         self.video_frame.setPixmap(pix)
 
     def run(self):
-        with picamera.PiCamera() as cam:
-            self.camera = cam
-            #cam.initialize()
-
-            '''initialize'''
-            self.camera.resolution = (IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT)
-            self.camera.framerate = 24
-            #self.opened = True
-            # time.sleep(2)
-            self.image = numpy.empty((IMAGE_SIZE_HEIGHT, IMAGE_SIZE_WIDTH, 3), dtype=numpy.uint8)
-
-
-            self.msleep(2000)
-            while True:
-                self.camera.capture(self.image, 'rgb')
-                self.camera.awb_mode = 'flash'
-                self.next_frame_slot(self.image)
-                self.msleep(400) # TODO: make this settable
-                qApp.processEvents()
+        while True:
+            self.next_frame_slot()
+            self.msleep(200) # TODO: make this settable
+            qApp.processEvents()
 
 
 class QImageBox(QGroupBox):
@@ -285,15 +246,16 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super(QMainWindow, self).__init__()
         #self.resize(1200, 800)
-        '''
+
         if USING_PI:
-            self.camera = PiCam()
+            self.camera = PiVideoStream()
         else:
             self.camera = Camera(0)
-        
-        self.camera.initialize()
-        '''
-        self.camera = None
+
+        self.camera.start()
+
+
+        #self.camera = None
         self.processor = get_processor(self.camera)
         self.wid = QWidget(self)
         self.setCentralWidget(self.wid)

@@ -4,13 +4,14 @@ from threading import Thread
 import cv2
 
 class PiVideoStream:
-	def __init__(self, resolution=(320, 240), framerate=32, **kwargs):
+	def __init__(self, resolution=(640, 368), framerate=32, **kwargs):
 		# initialize the camera
 		self.camera = PiCamera()
 
 		# set camera parameters
 		self.camera.resolution = resolution
 		self.camera.framerate = framerate
+		self.camera.awb_mode = 'flash'
 
 		# set optional camera parameters (refer to PiCamera docs)
 		for (arg, value) in kwargs.items():
@@ -49,7 +50,7 @@ class PiVideoStream:
 				self.camera.close()
 				return
 
-	def read(self):
+	def get_frame(self):
 		# return the frame most recently read
 		return self.frame
 
