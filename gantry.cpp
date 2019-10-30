@@ -4,7 +4,7 @@
 int x_coord, y_coord, z_coord = 0;
 
 int mm_to_steps(int axis, double distance){
-	
+
 	int totalSteps;
 	
 	if(axis == X_AXIS){
@@ -208,4 +208,8 @@ int depth_finder(){
 			
 		}
 	return(z_depth);
+}
+
+void echo() {
+    Serial.println("hi");
 }

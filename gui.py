@@ -20,20 +20,42 @@ import api
 import time
 import os
 
-from pivideostream import PiVideoStream
-
-MOCK_MODE_IMAGE_PROCESSING = 1
-MOCK_MODE_GANTRY = 1
-
-CAMERA_RESOLUTION_WIDTH = 1920
-CAMERA_RESOLUTION_HEIGHT = 1080
-
-IMAGE_SIZE_WIDTH = 960 #640
-IMAGE_SIZE_HEIGHT = 540 #368
-SCALE_FACTOR = 2 #TODO: scale factor could be auto-calced..
-BORDER_SIZE = 10
+import common
 
 USING_PI = os.uname()[4][:3] == 'arm'
+if USING_PI:
+    from pivideostream import PiVideoStream
+
+    MOCK_MODE_IMAGE_PROCESSING = 1
+    MOCK_MODE_GANTRY = 1
+
+    CAMERA_RESOLUTION_WIDTH = 1920
+    CAMERA_RESOLUTION_HEIGHT = 1080
+
+    CROPPING_ENABLED = 1
+    CROPPED_RESOLUTION_WIDTH = 1080
+    CROPPED_RESOLUTION_HEIGHT = 1080
+
+    IMAGE_SIZE_WIDTH = 540  # 640
+    IMAGE_SIZE_HEIGHT = 540  # 368
+    SCALE_FACTOR = 2  # TODO: scale factor could be auto-calced..
+    BORDER_SIZE = 10
+
+else:
+    MOCK_MODE_IMAGE_PROCESSING = 1
+    MOCK_MODE_GANTRY = 1
+
+    CAMERA_RESOLUTION_WIDTH = 1280
+    CAMERA_RESOLUTION_HEIGHT = 720
+
+    CROPPING_ENABLED = 1
+    CROPPED_RESOLUTION_WIDTH = 500
+    CROPPED_RESOLUTION_HEIGHT = 360
+
+    IMAGE_SIZE_WIDTH = 640  # 640
+    IMAGE_SIZE_HEIGHT = 360  # 368
+    SCALE_FACTOR = 2  # TODO: scale factor could be auto-calced..
+    BORDER_SIZE = 10
 
 def ui_main():
     """
@@ -86,8 +108,8 @@ class Camera:
         pass
 
     def set_resolution(self, width, height):
-        self.cap.set(cv2.CV_CAP_PROP_FRAME_WIDTH, width)
-        self.cap.set(cv2.CV_CAP_PROP_FRAME_HEIGHT, height)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
 
     def get_frame(self, rbg2rgb=True):
         ret, frame = self.cap.read()
@@ -146,6 +168,7 @@ class PreviewThread(QThread):
         # Sometimes the first few frame are null, so we will ignore them.
         if frame is None:
             return
+        framee = common.cropND(frame, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH)) # TODO: why doesnt this work?
         img = QImage(frame, frame.shape[1], frame.shape[0], QImage.Format_RGB888)
         pix = QPixmap.fromImage(img)
         #if not USING_PI:
@@ -384,7 +407,9 @@ class MainWindow(QMainWindow):
         :return: None
         """
         print("Processing...")
-        cv_img, points = self.processor.process_image(self.camera.get_frame())
+        raw = self.camera.get_frame()
+        raw = common.cropND(raw, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
+        cv_img, points = self.processor.process_image(raw)
         cv_img_bgr = cv2.cvtColor(cv_img, cv2.COLOR_RGB2BGR)
         height, width, channel = cv_img.shape
         bytes_per_line = 3 * width
