@@ -1,6 +1,7 @@
 import time
 import picamera
 import numpy as np
+import cv2
 
 with picamera.PiCamera() as camera:
     camera.resolution = (320, 240)
@@ -8,4 +9,4 @@ with picamera.PiCamera() as camera:
     time.sleep(2)
     output = np.empty((240, 320, 3), dtype=np.uint8)
     camera.capture(output, 'rgb')
-    time.sleep(2)
+    cv2.imwrite('picam.jpg', output)

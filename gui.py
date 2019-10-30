@@ -25,14 +25,12 @@ from pivideostream import PiVideoStream
 MOCK_MODE_IMAGE_PROCESSING = 1
 MOCK_MODE_GANTRY = 1
 
-IMAGE_SIZE_WIDTH = 640
-IMAGE_SIZE_HEIGHT = 368
+IMAGE_SIZE_WIDTH = 640 
+IMAGE_SIZE_HEIGHT = 368 
 SCALE_FACTOR = 3 #TODO: scale factor could be auto-calced..
 BORDER_SIZE = 10
 
 USING_PI = os.uname()[4][:3] == 'arm'
-if USING_PI:
-    import picamera
 
 def ui_main():
     """
@@ -89,7 +87,7 @@ class Camera:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         return frame
 
-    def close_camera(self):
+    def stop(self):
         self.cap.release()
 
     def __str__(self):
@@ -136,6 +134,10 @@ class PreviewThread(QThread):
 
     def next_frame_slot(self):
         frame = self.camera.get_frame()
+
+        # Sometimes the first few frame are null, so we will ignore them.
+        if frame is None:
+            return
         img = QImage(frame, frame.shape[1], frame.shape[0], QImage.Format_RGB888)
         pix = QPixmap.fromImage(img)
         if not USING_PI:
@@ -181,6 +183,11 @@ class QProcessedImageGroupBox(QGroupBox):
 
     def getPos(self, event):
         # TODO: Reverse scaling to get closet coordinates...
+
+        if not self.points:
+            print('User tried to click point before any existed.')
+            return
+
         selected_x = event.pos().x() - BORDER_SIZE/2
         selected_y = event.pos().y() - BORDER_SIZE/2
 
@@ -188,6 +195,7 @@ class QProcessedImageGroupBox(QGroupBox):
         best_y = 10000
         chosen = -1
         # check closest point
+
         for i in range(0, len(self.points)):
             point = self.points[i]
             x,y = point
@@ -254,8 +262,6 @@ class MainWindow(QMainWindow):
 
         self.camera.start()
 
-
-        #self.camera = None
         self.processor = get_processor(self.camera)
         self.wid = QWidget(self)
         self.setCentralWidget(self.wid)
@@ -306,9 +312,11 @@ class MainWindow(QMainWindow):
         btn_reset.clicked.connect(self.reset_event)
         btn_calibrate = QPushButton("Calibrate")
         btn_calibrate.clicked.connect(self.calibrate_event)
+        btn_close = QPushButton("Close")
+        btn_close.clicked.connect(self.close_event)
 
         self.btn_widget = QWidget()
-        btn_panel = _createCntrBtn(btn_process_img, btn_reset, btn_calibrate)
+        btn_panel = _createCntrBtn(btn_process_img, btn_reset, btn_calibrate, btn_close)
         self.btn_widget.setLayout(btn_panel)
 
         self._layout.addWidget(self.btn_widget)
@@ -383,4 +391,10 @@ class MainWindow(QMainWindow):
 
     def calibrate_event(self):
         QMessageBox.information(None, 'Calibration', 'Wow!', QMessageBox.Ok)
+        # TODO: deem if this is a necessary functionality or if we will keep it in arduino code
+
+    def close_event(self):
+        self.camera.stop()
+        time.sleep(1)
+        qApp.exit()
         # TODO: deem if this is a necessary functionality or if we will keep it in arduino code
