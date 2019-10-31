@@ -3,6 +3,11 @@
 #define SCREW_LEAD_Z	8
 #define STEPS_PER_REVOLUTION	200
 #define STEPS_TO_Y_HOME	1250
+#define NEEDLE_Z_PROJ	10
+#define	NEEDLE_Y_PROJ	10
+#define NEEDLE_X_PROJ	20
+#define SERVO_BEGIN		0
+#define SERVO_INJECT_DIST 100
 #define X_AXIS	0
 #define Y_AXIS	1
 #define Z_AXIS	2
@@ -17,6 +22,10 @@
 #define DIR_PIN_Y2 50
 #define DIR_PIN_Z 34
 #define CAP_SENSE_PIN	36
+#define SERVO_PIN	A0
+#define LIMIT_Y_HOME_PIN 20
+#define LIMIT_X_HOME_PIN 21
+#define LIMIT_Z_HOME_PIN 22
 
 /*extern volatile int x_coord;
 extern volatile int y_coord;
@@ -26,9 +35,12 @@ int 	mm_to_steps(int axis, double distance);
 void 	select_direction_pin(int dir);
 int 	select_step_pin(int axis);
 void 	gantry_init();
-void 	move_stepper(int axis, int coordinate_mm, int dir);
+int 	move_stepper(int axis, int coordinate_mm, int dir);
 void 	move_y_home();
 int 	wait_for_coordinate();
-void 	move_xyz_to_IL();
-int 	wait_for_error_check();
+void 	move_cap_to_IL();
+void 	wait_for_error_check();
 int		depth_finder();
+void 	position_needle();
+void 	inject_needle();
+void	go_home();
