@@ -27,20 +27,25 @@
 #define LIMIT_X_HOME_PIN 21
 #define LIMIT_Z_HOME_PIN 22
 
+// Command Bytes
+#define CMD_WAIT_COORDINATE (int) '8'
+#define CMD_FINISH (int) '9'
+
 /*extern volatile int x_coord;
 extern volatile int y_coord;
 extern volatile int z_coord;*/
 
-int 	mm_to_steps(int axis, double distance);
-void 	select_direction_pin(int dir);
-int 	select_step_pin(int axis);
 void 	gantry_init();
-int 	move_stepper(int axis, int coordinate_mm, int dir);
 void 	move_y_home();
 int 	wait_for_coordinate();
 void 	move_cap_to_IL();
-void 	wait_for_error_check();
-int		depth_finder();
 void 	position_needle();
+void 	wait_for_error_check();
 void 	inject_needle();
 void	go_home();
+
+int 	mm_to_steps(int axis, double distance);
+void 	select_direction_pin(int dir);
+int 	select_step_pin(int axis);
+int 	move_stepper(int axis, int coordinate_mm, int dir);
+int		depth_finder();

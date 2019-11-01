@@ -14,8 +14,208 @@
 #include <gantry.hpp>
 #include <Arduino.h>
 
-int x_coord, y_coord, z_coord = 0;
-bool enable = 0;
+static int x_coord, y_coord, z_coord = 0;
+static bool enable = 0;
+
+/**********************************
+ * FUNCTIONS IN ORDER OF EXECUTION
+***********************************/
+
+/********************************************************************
+*Function: gantry_init
+*Purpose: Initializes serial baud rate
+*Returns:  void
+*Inputs:   No input
+/********************************************************************/
+void gantry_init(){
+	Serial.begin(115200);
+}
+
+/********************************************************************
+*Function: move_y_home
+*Purpose:  Move to y-axis to the predefined working area origin
+*Returns:  void
+*Inputs:   no input
+/********************************************************************/
+void move_y_home(){
+
+	move_stepper(Y_AXIS, STEPS_TO_Y_HOME, FORWARD);
+
+}
+
+/********************************************************************
+*Function: wait_for_coordinate
+*Purpose:  Waits to receive a valid coordinate from the Pi in the
+		   format (8xxx9xxx) where xxx represents a 3 digit mm value
+		   and 8 and 9 being confirmation bytes to validate that this
+		   is a valid coordinate packet
+*Returns:  0 (valid coordinate received)
+*		   1 (invalid coordinate packet)
+*Inputs:   no input
+/********************************************************************/
+int wait_for_coordinate(){
+
+	int value[8];
+	while(Serial.available() < 8);
+	for(int i=0; i<8; i++){
+		value[i] = Serial.read();
+		Serial.write(value[i]);
+	}
+	if(value[0] == CMD_WAIT_COORDINATE && value[4] == CMD_FINISH){
+
+		for(int n = 1; n<4; n++){ // what is the purpose of this? offsetting the mm given?
+			value[n] -= 48; // put whatever 48 is in a gantry.hpp as a named constant.
+			value[n+4] -= 48;
+		}
+		x_coord = (value[1]*100)+(value[2]*10)+value[3];
+		y_coord = (value[5]*100)+(value[6]*10)+value[7];
+
+	}
+	else{
+		Serial.write("Invalid packet");
+		Serial.flush();
+		return(1);
+	}
+	Serial.flush();
+	return(0);
+
+}
+
+/********************************************************************
+*Function: move_cap_to_IL
+*Purpose:  Moves the capacitive sensor to the insertion coordinate
+*Returns:  void
+*Inputs:   no input
+/********************************************************************/
+void move_cap_to_IL(){
+
+	int dir;
+
+	dir = FORWARD;
+	move_stepper(X_AXIS, x_coord, dir);
+	move_stepper(Y_AXIS, y_coord, dir);
+	move_stepper(Z_AXIS, z_coord, dir);
+
+}
+
+/********************************************************************
+*Function: position_needle
+*Purpose:  Move the needle back in the z and y axes to allow a little
+*		   space for the needle to gain momentum before penetrating
+*		   the skin/vein.  Also shift x axis over since cap sensor is
+*		   to the right of needle.
+*Returns:  void
+*Inputs:   no input
+/********************************************************************/
+void position_needle(){
+
+	move_stepper(Z_AXIS, NEEDLE_Z_PROJ, BACKWARD);
+	move_stepper(Y_AXIS, NEEDLE_Y_PROJ, BACKWARD);
+	move_stepper(X_AXIS, NEEDLE_X_PROJ, FORWARD);
+
+}
+
+/********************************************************************
+*Function: wait_for_error_check
+*Purpose:  Waits to receive the coordinate of the tip of the needle.
+*		   It then calculates the distance needed to travel to move
+*		   to the correct location, and moves the needle to that spot.
+*Returns:  0 (tip was off by less than 3mm, no correction needed)
+*		   1 (location was off by more than 3mm and they were corrected)
+*Inputs:   no input
+/********************************************************************/
+void wait_for_error_check(){
+
+	int old_x_coord,
+		old_y_coord,
+		old_z_coord,
+		dx, dy, dz, dirx, diry;
+
+	old_x_coord = x_coord;		//store insertion location
+	old_y_coord = y_coord;
+	old_z_coord = z_coord;
+
+	int m=1;
+	while(m != 0){
+		m = wait_for_coordinate();	//wait for needle tip coordinate
+	}
+
+	dx = old_x_coord - x_coord;		//calculate distance of needle tip to IL
+	dy = old_y_coord - y_coord;
+
+	if(dx < 0){						//if dx or dy are negative account to move in opposite direction
+		dirx = FORWARD;				//move (+) if they are not negative
+		dx *= -1;
+	}
+	else{
+		dirx = BACKWARD;
+	}
+	if(dy < 0){
+		diry = FORWARD;
+		dy *= -1;
+	}
+	else{
+		diry = BACKWARD;
+	}
+
+
+	if(dx > 3){						//if dx or dy are off by more than 3mm then adjust tip location
+		move_stepper(X_AXIS, dx, dirx);
+	}
+	if(dy > 3){
+		move_stepper(Y_AXIS, dy, diry);
+	}
+}
+
+/********************************************************************
+*Function: inject_needle
+*Purpose:  Verify that needle is fully actuated back, then stick the
+*		   the needle (actuate predefined distance).
+*		   void
+*Inputs:   no input
+/********************************************************************/
+void inject_needle(){
+
+	int servo_position;
+
+	servo_position = analogRead(SERVO_PIN);
+	if(servo_position != SERVO_BEGIN){
+		analogWrite(SERVO_PIN, SERVO_BEGIN);
+	}
+	else{
+		analogWrite(SERVO_PIN, SERVO_INJECT_DIST);
+	}
+
+}
+
+/********************************************************************
+*Function: go_home
+*Purpose:  Move all axes back to home location (until limit switches
+*		   are activated)
+*		   void
+*Inputs:   no input
+/********************************************************************/
+void go_home(){
+
+	while((digitalRead(LIMIT_X_HOME_PIN) != 0)){
+		move_stepper(X_AXIS, 10, BACKWARD);
+	}
+	while((digitalRead(LIMIT_X_HOME_PIN) != 0)){
+		move_stepper(Y_AXIS, 10, BACKWARD);
+	}
+	while((digitalRead(LIMIT_X_HOME_PIN) != 0)){
+		move_stepper(Z_AXIS, 10, BACKWARD);
+	}
+}
+
+
+/**********************************
+ * END OF FUNCTIONS IN ORDER OF EXECUTION
+***********************************/
+
+/**********************************
+ * HELPER FUNCTIONS
+***********************************/
 
 /********************************************************************
 *Function: mm_to_steps
@@ -28,16 +228,19 @@ bool enable = 0;
 int mm_to_steps(int axis, double distance){
 	
 	int totalSteps;
+	int screw_lead_axis;
 	
 	if(axis == X_AXIS){
-		totalSteps = (double)STEPS_PER_REVOLUTION * ( 1 / (double)SCREW_LEAD_X) * ((double)(distance + 1));
+		screw_lead_axis = SCREW_LEAD_X;
 	}
 	if(axis == Y_AXIS){
-		totalSteps = (double)STEPS_PER_REVOLUTION * ( 1 / (double)SCREW_LEAD_Y) * ((double)(distance + 1));
+		screw_lead_axis = SCREW_LEAD_Y;
 	}
 	if(axis == Z_AXIS){
-		totalSteps = (double)STEPS_PER_REVOLUTION * ( 1 / (double)SCREW_LEAD_Z) * ((double)(distance + 1));
+		screw_lead_axis = SCREW_LEAD_Z;
 	}
+
+	totalSteps = (double)STEPS_PER_REVOLUTION * ( 1 / (double)screw_lead_axis) * ((double)(distance + 1));
 	
 	return(totalSteps);
 }
@@ -90,16 +293,6 @@ int select_step_pin(int axis){
 }
 
 /********************************************************************
-*Function: gantry_init
-*Purpose: Initializes serial baud rate
-*Returns:  void
-*Inputs:   No input
-/********************************************************************/
-void gantry_init(){
-	Serial.begin(115200);
-}
-
-/********************************************************************
 *Function: move_stepper
 *Purpose:  Moves an axis a certain distance in a particular direction
 *Returns:  0 (stepper moved successfully)
@@ -109,20 +302,20 @@ void gantry_init(){
 *		   dir (FORWARD, BACKWARD) - direction to move actuator
 /********************************************************************/
 int move_stepper(int axis, int coordinate_mm, int dir){
-	
-	int i, 
-		stepPin, 
+
+	int i,
+		stepPin,
 		steps,
 		z_depth;
-	
+
 	steps = mm_to_steps(axis, coordinate_mm);
 	select_direction_pin(dir);
 	stepPin = select_step_pin(axis);
-	
+
 	if(axis = Z_AXIS  && dir == FORWARD){
 		z_depth = depth_finder();
 	}
-	
+
 	for(i=0; i<steps; i++){
 		if(enable != 0){
 			return(1);
@@ -143,125 +336,6 @@ int move_stepper(int axis, int coordinate_mm, int dir){
 }
 
 /********************************************************************
-*Function: move_y_home
-*Purpose:  Move to y-axis to the predefined working area origin
-*Returns:  void
-*Inputs:   no input
-/********************************************************************/
-void move_y_home(){
-	
-	move_stepper(Y_AXIS, STEPS_TO_Y_HOME, FORWARD);
-	
-}
-
-/********************************************************************
-*Function: wait_for_coordinate
-*Purpose:  Waits to receive a valid coordinate from the Pi in the 
-		   format (8xxx9xxx) where xxx represents a 3 digit mm value
-		   and 8 and 9 being confirmation bytes to validate that this
-		   is a valid coordinate packet
-*Returns:  0 (valid coordinate received)
-*		   1 (invalid coordinate packet)
-*Inputs:   no input
-/********************************************************************/
-int wait_for_coordinate(){
-	
-	int value[8];
-	while(Serial.available() < 8);
-	for(int i=0; i<8; i++){
-		value[i] = Serial.read();
-		Serial.write(value[i]);
-	}
-	if(value[0] == 56 && value[4] == 57){   //look for 8 and 9 command bytes
-		for(int n = 1; n<4; n++){
-			value[n] -= 48;
-			value[n+4] -= 48;
-		}
-		x_coord = (value[1]*100)+(value[2]*10)+value[3];
-		y_coord = (value[5]*100)+(value[6]*10)+value[7];
-		
-	}
-	else{
-		Serial.write("Invalid packet");
-		Serial.flush();
-		return(1);
-	}
-	Serial.flush();
-	return(0);
-	
-}
-
-/********************************************************************
-*Function: move_cap_to_IL
-*Purpose:  Moves the capacitive sensor to the insertion coordinate
-*Returns:  void
-*Inputs:   no input
-/********************************************************************/
-void move_cap_to_IL(){
-	
-	int dir;
-	
-	dir = FORWARD;
-	move_stepper(X_AXIS, x_coord, dir);
-	move_stepper(Y_AXIS, y_coord, dir);
-	move_stepper(Z_AXIS, z_coord, dir);
-
-}
-
-/********************************************************************
-*Function: wait_for_error_check
-*Purpose:  Waits to receive the coordinate of the tip of the needle.
-*		   It then calculates the distance needed to travel to move
-*		   to the correct location, and moves the needle to that spot.
-*Returns:  0 (tip was off by less than 3mm, no correction needed)
-*		   1 (location was off by more than 3mm and they were corrected)
-*Inputs:   no input
-/********************************************************************/
-void wait_for_error_check(){
-
-	int old_x_coord, 
-		old_y_coord, 
-		old_z_coord,
-		dx, dy, dz, dirx, diry;
-		
-	old_x_coord = x_coord;		//store insertion location
-	old_y_coord = y_coord;
-	old_z_coord = z_coord;
-	
-	int m=1;
-	while(m != 0){
-		m = wait_for_coordinate();	//wait for needle tip coordinate
-	}
-	
-	dx = old_x_coord - x_coord;		//calculate distance of needle tip to IL
-	dy = old_y_coord - y_coord;		
-	
-	if(dx < 0){						//if dx or dy are negative account to move in opposite direction
-		dirx = FORWARD;				//move (+) if they are not negative
-		dx *= -1;
-	}
-	else{
-		dirx = BACKWARD;
-	}
-	if(dy < 0){
-		diry = FORWARD;
-		dy *= -1;
-	}
-	else{
-		diry = BACKWARD;
-	}
-	
-	
-	if(dx > 3){						//if dx or dy are off by more than 3mm then adjust tip location
-		move_stepper(X_AXIS, dx, dirx);
-	}
-	if(dy > 3){
-		move_stepper(Y_AXIS, dy, diry);
-	}
-	
-}
-
-/********************************************************************
 *Function: depth_finder
 *Purpose:  Move z-axis down until capacitive sensor is triggered.
 *		   "Debounce" the capacitive sensor to ensure good read.
@@ -269,14 +343,14 @@ void wait_for_error_check(){
 *Inputs:   no input
 /********************************************************************/
 int depth_finder(){
-	
+
 	int capSamples[10], debounceCap;
 	bool capOut;
 	int z_depth = 0;
-	
+
 	capOut = digitalRead (CAP_SENSE_PIN);
 		while(capOut == 0){
-			if(enable == 0){	
+			if(enable == 0){
 			capOut = digitalRead(CAP_SENSE_PIN);
 			digitalWrite(STEP_PIN_Z, HIGH);
 			delay(2);
@@ -289,66 +363,15 @@ int depth_finder(){
 			debounceCap += capSamples[n];
 		}
 		if(debounceCap > 7){
-			
+
 		}
 	return(z_depth);
 }
 
-/********************************************************************
-*Function: position_needle
-*Purpose:  Move the needle back in the z and y axes to allow a little
-*		   space for the needle to gain momentum before penetrating
-*		   the skin/vein.  Also shift x axis over since cap sensor is
-*		   to the right of needle.
-*Returns:  void
-*Inputs:   no input
-/********************************************************************/
-void position_needle(){
-	
-	move_stepper(Z_AXIS, NEEDLE_Z_PROJ, BACKWARD);
-	move_stepper(Y_AXIS, NEEDLE_Y_PROJ, BACKWARD);
-	move_stepper(X_AXIS, NEEDLE_X_PROJ, FORWARD);
+/**********************************
+ * END HELPER FUNCTIONS
+***********************************/
 
-}
-
-/********************************************************************
-*Function: inject_needle
-*Purpose:  Verify that needle is fully actuated back, then stick the
-*		   the needle (actuate predefined distance).
-*		   void
-*Inputs:   no input
-/********************************************************************/
-void inject_needle(){
-	
-	int servo_position;
-
-	servo_position = analogRead(SERVO_PIN);
-	if(servo_position != SERVO_BEGIN){
-		analogWrite(SERVO_PIN, SERVO_BEGIN);
-	}
-	else{
-		analogWrite(SERVO_PIN, SERVO_INJECT_DIST);
-	}
-	
-}
-
-/********************************************************************
-*Function: go_home
-*Purpose:  Move all axes back to home location (until limit switches
-*		   are activated)
-*		   void
-*Inputs:   no input
-/********************************************************************/
-void go_home(){
-
-	while((digitalRead(LIMIT_X_HOME_PIN) != 0)){
-		move_stepper(X_AXIS, 10, BACKWARD);
-	}
-	while((digitalRead(LIMIT_X_HOME_PIN) != 0)){	
-		move_stepper(Y_AXIS, 10, BACKWARD);
-	}
-	while((digitalRead(LIMIT_X_HOME_PIN) != 0)){
-		move_stepper(Z_AXIS, 10, BACKWARD);
-	}
-	
-}
+/**********************************
+ * UNUSED FUNCTIONS
+***********************************/
