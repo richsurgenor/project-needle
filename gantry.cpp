@@ -62,6 +62,17 @@ int wait_for_coordinate(){
 		Serial.write(value[i]);
 	}
 	if(value[0] == CMD_WAIT_COORDINATE && value[4] == CMD_FINISH){
+         /* Concerns
+          * If value[0] is not the start of this packet.. but value[1+n] happens to be..
+          * in reality we will be waiting to read in cmds and flushing the buffer definitely shouldnt happen
+          * if the cmd happens to be a different one...
+          * May be slow.. google says pi is 40 times faster than the arduino.
+          * Mathematics Type	Arduino Performance	Raspberry Pi Performance
+          * Integer	5.2 DMIPS	875 DMIPS
+          * Floating Point	0.089 Linpack MFLOPS	280 Linpack MFLOPS
+          * May be worth ofloading some of these calculations to the rpi and let arduino focus on actually
+          * moving the needle...
+          */
 
 		for(int n = 1; n<4; n++){ // what is the purpose of this? offsetting the mm given?
 			value[n] -= 48; // put whatever 48 is in a gantry.hpp as a named constant.
@@ -71,7 +82,7 @@ int wait_for_coordinate(){
 		y_coord = (value[5]*100)+(value[6]*10)+value[7];
 
 	}
-	else{
+	else{ // this shouldnt be handled here... but by what is taking in the cmds..
 		Serial.write("Invalid packet");
 		Serial.flush();
 		return(1);
@@ -303,6 +314,11 @@ int select_step_pin(int axis){
 /********************************************************************/
 int move_stepper(int axis, int coordinate_mm, int dir){
 
+    /*
+     * Status msgs
+     * Hoping we can get a status msg of where the gantry is. Not every time it moves but at least whenever
+     * coordinate_mm % 10 == 0 steps or so
+     */
 	int i,
 		stepPin,
 		steps,
@@ -313,6 +329,9 @@ int move_stepper(int axis, int coordinate_mm, int dir){
 	stepPin = select_step_pin(axis);
 
 	if(axis = Z_AXIS  && dir == FORWARD){
+	    /*
+         * Would like a status msg with the z depth found
+         */
 		z_depth = depth_finder();
 	}
 
