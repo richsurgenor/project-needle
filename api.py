@@ -4,6 +4,8 @@ from abc import abstractmethod
 import time
 import threading
 
+#from serial import Serial
+
 class AbstractProcessor:
 
     def __init__(self, camera):
@@ -81,6 +83,8 @@ class GantryMock(threading.Thread):
         time.sleep(0.5)
         return self.point
 
+SERIAL_INTERFACE = '/dev/ttyACM0'
+BAUD_RATE = 115200
 
 class AbstractGantryController(threading.Thread):
     """
@@ -128,6 +132,9 @@ class AbstractGantryController(threading.Thread):
         """
         self.send_gantry_absolute_pos({"x": 0, "y": 0, "z": 0})
 
+    def send_coordinate(self):
+        pass
+
 
 class GantryController(AbstractGantryController):
 
@@ -137,6 +144,10 @@ class GantryController(AbstractGantryController):
         self.x = 0
         self.y = 0
         self.z = 0
+
+        print("initializing serial interface..")
+        arduino = Serial('/dev/ttyACM0', 115200)
+
 
     def get_current_gantry_pos(self):
         pass
