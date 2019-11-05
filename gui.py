@@ -31,7 +31,7 @@ if USING_PI:
     SAVE_RAWIMG = 0
 
     MOCK_MODE_IMAGE_PROCESSING = 1
-    MOCK_MODE_GANTRY = 1
+    MOCK_MODE_GANTRY = 0
 
     CAMERA_RESOLUTION_WIDTH = 1920
     CAMERA_RESOLUTION_HEIGHT = 1080
@@ -48,9 +48,10 @@ if USING_PI:
 else:
 
     DARK_THEME = 0
+    SAVE_RAWIMG = 0
 
     MOCK_MODE_IMAGE_PROCESSING = 1
-    MOCK_MODE_GANTRY = 1
+    MOCK_MODE_GANTRY = 0
 
     CAMERA_RESOLUTION_WIDTH = 1280
     CAMERA_RESOLUTION_HEIGHT = 720
@@ -140,13 +141,18 @@ class StatusThread(QThread):
     def __init__(self, status):
         super().__init__()
         self.status = status
-        if MOCK_MODE_GANTRY:
-            self.gc = api.GantryControllerMock()
-        else:
-            self.gc = api.GantryController()
+        self.gc = get_controller()
         self.gc.start()
+        self.msleep(100)
+        self.gc.send_msg(api.REQ_ECHO_MSG, "Connected to Arduino!")
 
     def run(self):
+        while True:
+            if self.gc:
+                self.status.showMessage(self.gc.msg)
+                self.msleep(1000)
+
+        """
         self.status.showMessage("STATUS: Connecting to Gantry..")
 
         self.status.showMessage("STATUS: Gantry going home..")
@@ -161,6 +167,7 @@ class StatusThread(QThread):
         self.msleep(1000)
         self.status.showMessage("STATUS: Waiting for user input..")
         # self.gc.send_gantry_home()
+        """
 
 
 
@@ -179,7 +186,7 @@ class PreviewThread(QThread):
         # Sometimes the first few frame are null, so we will ignore them.
         if frame is None:
             return
-        frame = common.cropND(frame, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH)) # TODO: why doesnt this work?
+        frame = common.cropND(frame, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
         #savemat('data.mat', {'frame': frame, 'framee': framee})
         img = QImage(numpy.asarray(frame, order='C'), frame.shape[1], frame.shape[0], QImage.Format_RGB888)
         pix = QPixmap.fromImage(img)
@@ -358,11 +365,22 @@ class MainWindow(QMainWindow):
         btn_close = QPushButton("Close")
         btn_close.clicked.connect(self.close_event)
 
+        btn_settings = QPushButton("Settings")
+        btn_settings.clicked.connect(self.settings_event)
+
+        btn_debug_cmds = QPushButton("Debug Cmds")
+        btn_debug_cmds.clicked.connect(self.debug_cmds_event)
+
+
         self.btn_widget = QWidget()
         btn_panel = _createCntrBtn(btn_process_img, btn_reset, btn_calibrate, btn_close)
         self.btn_widget.setLayout(btn_panel)
-
         self._layout.addWidget(self.btn_widget)
+
+        self.btn_widget2 = QWidget()
+        btn_panel2 = _createCntrBtn(btn_settings, btn_debug_cmds)
+        self.btn_widget2.setLayout(btn_panel2)
+        self._layout.addWidget(self.btn_widget2)
 
         self.show()
 
@@ -434,7 +452,14 @@ class MainWindow(QMainWindow):
         self.draw_processed_img(processed_img_scaled, scaled_points, -1)
 
     def reset_event(self):
-        self.output_box.image_label.set_status(False)
+        self.status_thread.gc.send_msg(api.REQ_RESET)
+        self.status_thread.gc.stop()
+        del self.status_thread.gc
+        self.status_thread.gc = None
+        time.sleep(1) # not okay probably
+        self.status_thread.gc = api.GantryController()
+        self.status_thread.gc.start()
+        #self.output_box.image_label.set_status(False)
         # TODO: actually make this reset the entire state of the GUI
 
     def calibrate_event(self):
@@ -451,3 +476,9 @@ class MainWindow(QMainWindow):
         time.sleep(1)
         qApp.exit()
         # TODO: deem if this is a necessary functionality or if we will keep it in arduino code
+
+    def settings_event(self):
+        pass
+
+    def debug_cmds_event(self):
+        pass

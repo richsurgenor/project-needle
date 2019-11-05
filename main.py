@@ -13,10 +13,10 @@ import sys
 import forwarding
 
 if __name__ == "__main__":
-    if sys.argv[1] != 'forwarding':
-        ui_main()
-    else:
+    if len(sys.argv) > 1 and sys.argv[1] == 'forwarding':
         import forwarding
         fwder = forwarding.Forwarder()
+    else:
+        ui_main()
 
 

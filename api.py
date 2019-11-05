@@ -147,9 +147,30 @@ class AbstractGantryController(threading.Thread):
         """
         pass
 
-POSITION_UPDATE = b'1'
-SEND_COORDINATE = '8'
-END_MESSAGE = '9'
+    @abstractmethod
+    def send_msg(self, cmd, msg=""):
+        """
+        :param cmd: cmd as python string
+        :param msg: msg to be echoed back from arduino
+        :return:
+        """
+        msg = cmd + msg
+        self.arduino.write(msg.encode('ascii'))
+
+# Requests from Pi
+REQ_ECHO_MSG = '0'
+REQ_POSITION_UPDATE = '1'
+REQ_MOVE_Y_HOME = '2'
+REQ_MOVE_STEPPER = '3'
+REQ_GO_TO_WORK = '4'
+REQ_RESET = '9'
+
+# Commands to Pi
+CMD_STATUS_MSG = b'0'
+CMD_GANTRY_INITIALIZED = b'1'
+CMD_POSITION_UPDATE = b'2'
+CMD_WAIT_COORDINATE = b'8'
+CMD_FINISH = b'9'
 
 class GantryController(AbstractGantryController):
 
@@ -160,23 +181,40 @@ class GantryController(AbstractGantryController):
         self.y = 0
         self.z = 0
 
+        self.coordinate_request = False
+        self.msg = 'No status available.'
+
         print("initializing serial interface..")
         self.arduino = Serial(SERIAL_INTERFACE, BAUD_RATE)
         print("connected to serial interface..")
 
+        self.stopped = False
+
     def run(self):
         print("started gantry controller thread...")
-        while True:
+        while not self.stopped:
             if self.arduino.inWaiting() > 0:
                 line = self.arduino.readline()
                 line = line.rstrip()
                 if len(line) > 0: # for some reason a newline character is by itself after readline
                     cmd = line[0:1]
 
-                    if cmd == POSITION_UPDATE:
-                        print("Received position update.")
+                    if cmd == CMD_GANTRY_INITIALIZED:
+                        self.msg = 'Moving Y Home...'
+                        self.send_msg(REQ_MOVE_Y_HOME)
+                    elif cmd == CMD_STATUS_MSG:
+                        msg = line[1:].decode('ascii')
+                        print(msg)
+                        self.msg = msg
+                    elif cmd == CMD_WAIT_COORDINATE:
+                        print("Received request for coordinate...");
+                        self.coordinate_request = True
+                    elif cmd == CMD_POSITION_UPDATE:
+                        print("Received position update...")
 
-                    print(line)
+        print("gantry thread ended...")
+
+                    #print(line)
 
     def get_current_gantry_pos(self):
         pass
@@ -187,12 +225,16 @@ class GantryController(AbstractGantryController):
     def send_gantry_distance(self, x, y, z):
         pass
 
+    def stop(self):
+        self.stopped = True
+
     def send_coordinate(self, x, y):
         print("sending coordinate...")
         self.arduino.write("hi".encode('ascii'))
         pass
 
-    def send_msg(self, msg):
+    def send_msg(self, cmd, msg=""):
+        msg = cmd + msg
         self.arduino.write(msg.encode('ascii'))
 
 
@@ -205,6 +247,9 @@ class GantryControllerMock(AbstractGantryController):
         self.point = {"x": 0, "y": 0, "z": 0}
 
         self.des_point = {"x": 0, "y": 0, "z": 0}
+
+        self.coordinate_request = False
+        self.msg = 'No status available.'
 
         self.gantry = GantryMock()
 
@@ -234,6 +279,12 @@ class GantryControllerMock(AbstractGantryController):
         pass
 
     def send_coordinate(self, x, y):
+        pass
+
+    def send_msg(self, cmd, msg=""):
+        pass
+
+    def stop(self):
         pass
 
 
