@@ -1,20 +1,26 @@
 #include <gantry.hpp>
+#include <Servo.h>
+
 
 void setup() {
-  int m=1;
+  int m = 1;
+  gantry_init();
   
-  gantry_init();    //initialize gantry parameters (serial)
-  move_y_home();    //move y-axis to work area origin
-  
-  while(m != 0){    //wait to receive valid coordinate from Pi
-    m = wait_for_coordinate();  
+  move_y_home();
+  while(m != 0){
+  m = wait_for_coordinate();
   }
-  move_cap_to_IL();  //move the capacitive sensor over the IL
-  position_needle(); //move needle to spot just behind IL
-  wait_for_error_check();  //adjust position of needle tip
+  move_cap_to_IL();
+  while(digitalRead(LIMIT_Y_HOME_PIN) != HIGH);
+  position_needle();
+  while(digitalRead(LIMIT_Y_HOME_PIN) != HIGH);
   inject_needle();
-  go_home();
-  
+  while(digitalRead(LIMIT_Y_HOME_PIN) != HIGH);
+  pull_needle();
+  while(digitalRead(LIMIT_Y_HOME_PIN) != HIGH);
+  move_back_from_IL();
+  //while(digitalRead(LIMIT_Y_HOME_PIN) != HIGH);*/
+  //move_y_back();
   while(1);
 }
 
