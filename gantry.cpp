@@ -13,6 +13,9 @@
 
 #include <gantry.hpp>
 #include <Arduino.h>
+#include <Servo.h>
+
+Servo myservo;  // create servo object to control a servo
 
 static int x_coord, y_coord, z_coord = 0;
 static bool enable = 0;
@@ -29,6 +32,7 @@ static bool enable = 0;
 /********************************************************************/
 void gantry_init(){
 	Serial.begin(115200);
+	myservo.attach(A2);  // attaches the servo on pin A2 to the servo object
 }
 
 /********************************************************************
@@ -187,16 +191,36 @@ void wait_for_error_check(){
 /********************************************************************/
 void inject_needle(){
 
-	int servo_position;
+	int val;
+	
+	val = analogRead(potpin);            // reads the value of the potentiometer (value between 0 and 1023)
+	val = map(val, 0, 1023, 3, 180);     // scale it to use it with the servo (value between 0 and 180)
+	myservo.write(val);                  // sets the servo position according to the scaled value
+	delay(3000);                           // waits for the servo to get there
+	val = analogRead(potpin);
+	val = map(val, 0, 1023, 50, 180);
+	myservo.write(val);
 
-	servo_position = analogRead(SERVO_PIN);
-	if(servo_position != SERVO_BEGIN){
-		analogWrite(SERVO_PIN, SERVO_BEGIN);
-	}
-	else{
-		analogWrite(SERVO_PIN, SERVO_INJECT_DIST);
-	}
+}
 
+void pull_needle(){
+		
+	int val;
+	
+	val = analogRead(potpin);            // reads the value of the potentiometer (value between 0 and 1023)
+	val = map(val, 0, 1023, 3, 180);     // scale it to use it with the servo (value between 0 and 180)
+	myservo.write(val);                  // sets the servo position according to the scaled value
+	delay(3000);                           // waits for the servo to get there
+
+}
+void move_back_from_IL(){	//this will probably only be used for my testing purposes
+	
+	int y_dist_travelled = ( MM_TO_Y_HOME + y_coord ) - NEEDLE_Y_PROJ;
+	int x_dist_travelled = x_coord + NEEDLE_X_PROJ;
+	
+	move_stepper(X_AXIS, x_dist_travelled, BACKWARD);
+	move_stepper(Y_AXIS, y_dist_travelled, BACKWARD);
+	
 }
 
 /********************************************************************
@@ -362,15 +386,17 @@ int move_stepper(int axis, int coordinate_mm, int dir){
 *Inputs:   no input
 /********************************************************************/
 int depth_finder(){
-
+	
 	int capSamples[10], debounceCap;
 	bool capOut;
 	int z_depth = 0;
-
+	
 	capOut = digitalRead (CAP_SENSE_PIN);
 		while(capOut == 0){
 			if(enable == 0){
+			//Serial.println(z_depth);
 			capOut = digitalRead(CAP_SENSE_PIN);
+			Serial.println(capOut);
 			digitalWrite(STEP_PIN_Z, HIGH);
 			delay(2);
 			z_depth++;
@@ -379,12 +405,14 @@ int depth_finder(){
 			}
 		}
 		for(int n = 0; n<10; n++){
+			capSamples[n] = digitalRead(CAP_SENSE_PIN);
 			debounceCap += capSamples[n];
+			Serial.println("abort");
 		}
 		if(debounceCap > 7){
-
+			return(z_depth);
 		}
-	return(z_depth);
+	return(0);
 }
 
 /**********************************
