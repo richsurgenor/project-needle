@@ -9,6 +9,14 @@ Justin Sutherland, Laura Grace Ayers.
 """
 
 from gui import ui_main
+import sys
+import forwarding
 
 if __name__ == "__main__":
-    ui_main()
+    if sys.argv[1] != 'forwarding':
+        ui_main()
+    else:
+        import forwarding
+        fwder = forwarding.Forwarder()
+
+

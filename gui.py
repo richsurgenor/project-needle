@@ -140,13 +140,16 @@ class StatusThread(QThread):
     def __init__(self, status):
         super().__init__()
         self.status = status
-        self.gc = api.GantryControllerMock()
-        #self.gc.start()
+        if MOCK_MODE_GANTRY:
+            self.gc = api.GantryControllerMock()
+        else:
+            self.gc = api.GantryController()
+        self.gc.start()
 
     def run(self):
         self.status.showMessage("STATUS: Connecting to Gantry..")
 
-        self.status.showMessage("STATUS: Sending Gantry Home..")
+        self.status.showMessage("STATUS: Gantry going home..")
         self.gc.mutex.acquire()
         self.gc.mode = 1
         self.gc.mutex.release()
@@ -440,6 +443,11 @@ class MainWindow(QMainWindow):
 
     def close_event(self):
         self.camera.stop()
+        gc = self.status_thread.gc
+        if gc.arduino:
+            if gc.arduino.is_open:
+                self.status_thread.gc.arduino.close()
+                print("closed serial interface..")
         time.sleep(1)
         qApp.exit()
         # TODO: deem if this is a necessary functionality or if we will keep it in arduino code

@@ -4,7 +4,10 @@ from abc import abstractmethod
 import time
 import threading
 
-#from serial import Serial
+from serial import Serial
+import os
+
+USING_PI = os.uname()[4][:3] == 'arm'
 
 class AbstractProcessor:
 
@@ -83,7 +86,10 @@ class GantryMock(threading.Thread):
         time.sleep(0.5)
         return self.point
 
-SERIAL_INTERFACE = '/dev/ttyACM0'
+if USING_PI:
+    SERIAL_INTERFACE = '/dev/ttyACM0'
+else:
+    SERIAL_INTERFACE = '/dev/cu.usbmodem1421'
 BAUD_RATE = 115200
 
 class AbstractGantryController(threading.Thread):
@@ -132,9 +138,18 @@ class AbstractGantryController(threading.Thread):
         """
         self.send_gantry_absolute_pos({"x": 0, "y": 0, "z": 0})
 
-    def send_coordinate(self):
+    @abstractmethod
+    def send_coordinate(self, x, y):
+        """
+        :param x: x in mm
+        :param y: y in mm
+        :return:
+        """
         pass
 
+POSITION_UPDATE = b'1'
+SEND_COORDINATE = '8'
+END_MESSAGE = '9'
 
 class GantryController(AbstractGantryController):
 
@@ -146,8 +161,22 @@ class GantryController(AbstractGantryController):
         self.z = 0
 
         print("initializing serial interface..")
-        arduino = Serial('/dev/ttyACM0', 115200)
+        self.arduino = Serial(SERIAL_INTERFACE, BAUD_RATE)
+        print("connected to serial interface..")
 
+    def run(self):
+        print("started gantry controller thread...")
+        while True:
+            if self.arduino.inWaiting() > 0:
+                line = self.arduino.readline()
+                line = line.rstrip()
+                if len(line) > 0: # for some reason a newline character is by itself after readline
+                    cmd = line[0:1]
+
+                    if cmd == POSITION_UPDATE:
+                        print("Received position update.")
+
+                    print(line)
 
     def get_current_gantry_pos(self):
         pass
@@ -157,6 +186,14 @@ class GantryController(AbstractGantryController):
 
     def send_gantry_distance(self, x, y, z):
         pass
+
+    def send_coordinate(self, x, y):
+        print("sending coordinate...")
+        self.arduino.write("hi".encode('ascii'))
+        pass
+
+    def send_msg(self, msg):
+        self.arduino.write(msg.encode('ascii'))
 
 
 class GantryControllerMock(AbstractGantryController):
@@ -194,6 +231,9 @@ class GantryControllerMock(AbstractGantryController):
         self.gantry.set_gantry_absolute_pos(in_point)
 
     def send_gantry_distance(self, x, y, z):
+        pass
+
+    def send_coordinate(self, x, y):
         pass
 
 
