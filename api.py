@@ -53,18 +53,49 @@ class GantryMock(threading.Thread):
     simulate gantry
     """
 
-
     def __init__(self):
         threading.Thread.__init__(self)
 
         self.point = { "x": 40, "y": 40, "z": 40}
-
         self.des_point = { "x": 0, "y": 0, "z": 0}
 
+        import queue
+        self.gantry_buffer = queue.SimpleQueue() # msgs to gantry
+        self.pi_buffer = queue.SimpleQueue() # msgs to pi
+
     def run(self):
-        print("Gantry thread initialized..")
+        print("GantryMock thread initialized..")
+        self.initialize_gantry()
+
         while True:
-            pass
+            line = self.gantry_buffer.get() # blocks..
+            req = chr(line[0])
+            if req == REQ_ECHO_MSG:
+                self.send_cmd(CMD_STATUS_MSG, line[1:].decode())
+            elif req == REQ_MOVE_STEPPER:
+                pass
+            elif req == REQ_MOVE_Y_HOME:
+                pass
+            else:
+                print("Unknown command passed to mock gantry interface..")
+
+    def initialize_gantry(self):
+        time.sleep(1)
+        self.send_cmd(CMD_STATUS_MSG, "Gantry is initialized...")
+        time.sleep(1)
+        self.send_cmd(CMD_GANTRY_INITIALIZED)
+
+    def send_cmd(self, cmd, msg=''):
+        if len(msg) > 0:
+            mymsg = bytearray(msg, 'ascii')
+            mymsg = cmd + mymsg
+        else:
+            mymsg = cmd
+        self.write_pi(mymsg)
+
+    #def simulate(self):
+    #
+    #    pass
 
     def is_home(self):
         return self.point['x'] == 0 and self.point['y'] == 0 and self.point['z'] == 0
@@ -85,6 +116,21 @@ class GantryMock(threading.Thread):
     def get_gantry_pos(self):
         time.sleep(0.5)
         return self.point
+
+    """
+    For now just combine the serial interface and the gantry for mock..
+    """
+    def readline(self):
+        return self.pi_buffer.get()
+
+    def write(self, msg):
+        self.gantry_buffer.put(msg)
+
+    def write_pi(self, msg):
+        self.pi_buffer.put(msg)
+
+    def inWaiting(self):
+        return self.pi_buffer.qsize()
 
 if USING_PI:
     SERIAL_INTERFACE = '/dev/ttyACM0'
@@ -155,7 +201,7 @@ class AbstractGantryController(threading.Thread):
         :return:
         """
         msg = cmd + msg
-        self.arduino.write(msg.encode('ascii'))
+        self.gantry.write(msg.encode('ascii'))
 
 # Requests from Pi
 REQ_ECHO_MSG = '0'
@@ -174,18 +220,22 @@ CMD_FINISH = b'9'
 
 class GantryController(AbstractGantryController):
 
-    def __init__(self):
+    def __init__(self, mocked=0):
         threading.Thread.__init__(self) # TODO: add thread events..
         # State of axes in millimeters
-        self.x = 0
-        self.y = 0
-        self.z = 0
+        self.point = {"x": 0, "y": 0, "z": 0}
+        self.des_point = {"x": 0, "y": 0, "z": 0}
 
         self.coordinate_request = False
         self.msg = 'No status available.'
 
         print("initializing serial interface..")
-        self.arduino = Serial(SERIAL_INTERFACE, BAUD_RATE)
+
+        if mocked:
+            self.gantry = GantryMock()
+            self.gantry.start()
+        else:
+            self.gantry = Serial(SERIAL_INTERFACE, BAUD_RATE)
         print("connected to serial interface..")
 
         self.stopped = False
@@ -193,8 +243,8 @@ class GantryController(AbstractGantryController):
     def run(self):
         print("started gantry controller thread...")
         while not self.stopped:
-            if self.arduino.inWaiting() > 0:
-                line = self.arduino.readline()
+            if self.gantry.inWaiting() > 0:
+                line = self.gantry.readline()
                 line = line.rstrip()
                 if len(line) > 0: # for some reason a newline character is by itself after readline
                     cmd = line[0:1]
@@ -230,62 +280,18 @@ class GantryController(AbstractGantryController):
 
     def send_coordinate(self, x, y):
         print("sending coordinate...")
-        self.arduino.write("hi".encode('ascii'))
+        self.gantry.write("hi".encode('ascii'))
         pass
 
-    def send_msg(self, cmd, msg=""):
+    def send_msg(self, cmd, msg="", encode=True):
         msg = cmd + msg
-        self.arduino.write(msg.encode('ascii'))
-
-
-class GantryControllerMock(AbstractGantryController):
-
-    def __init__(self):
-
-        threading.Thread.__init__(self)
-        # State of axes in millimeters
-        self.point = {"x": 0, "y": 0, "z": 0}
-
-        self.des_point = {"x": 0, "y": 0, "z": 0}
-
-        self.coordinate_request = False
-        self.msg = 'No status available.'
-
-        self.gantry = GantryMock()
-
-        self.mode = 0
-        self.mutex = threading.Lock()
-
-    def run(self):
-        print("GantryController thread initialized..")
-        while True:
-            self.mutex.acquire()
-            if self.mode == 1: # set pos
-                self.gantry.set_gantry_absolute_pos(self.des_point)
-                self.mode = 0
-            self.mutex.release()
-
-
-    def get_current_gantry_pos(self):
-        self.gantry.get_gantry_pos()
-
-    def send_gantry_absolute_pos(self, in_point):
-        for axis in self.des_point:
-            self.des_point[axis] = in_point[axis]
-
-        self.gantry.set_gantry_absolute_pos(in_point)
-
-    def send_gantry_distance(self, x, y, z):
-        pass
-
-    def send_coordinate(self, x, y):
-        pass
-
-    def send_msg(self, cmd, msg=""):
-        pass
-
-    def stop(self):
-        pass
+        if encode:
+            msg = msg.encode('ascii')
+        else:
+            # only encode command
+            cmd_enc = cmd.encode('ascii')
+            msg = cmd_enc + msg
+        self.gantry.write(msg)
 
 
 

@@ -24,6 +24,7 @@ from scipy.io import savemat
 import common
 
 USING_PI = os.uname()[4][:3] == 'arm'
+
 if USING_PI:
     from pivideostream import PiVideoStream
 
@@ -51,7 +52,7 @@ else:
     SAVE_RAWIMG = 0
 
     MOCK_MODE_IMAGE_PROCESSING = 1
-    MOCK_MODE_GANTRY = 0
+    MOCK_MODE_GANTRY = 1
 
     CAMERA_RESOLUTION_WIDTH = 1280
     CAMERA_RESOLUTION_HEIGHT = 720
@@ -141,10 +142,10 @@ class StatusThread(QThread):
     def __init__(self, status):
         super().__init__()
         self.status = status
-        self.gc = get_controller()
+        self.gc = api.GantryController(MOCK_MODE_GANTRY)
         self.gc.start()
         self.msleep(100)
-        self.gc.send_msg(api.REQ_ECHO_MSG, "Connected to Arduino!")
+        #self.gc.send_msg(api.REQ_ECHO_MSG, "Connected to Arduino!")
 
     def run(self):
         while True:
@@ -457,7 +458,7 @@ class MainWindow(QMainWindow):
         del self.status_thread.gc
         self.status_thread.gc = None
         time.sleep(1) # not okay probably
-        self.status_thread.gc = api.GantryController()
+        self.status_thread.gc = api.GantryController(MOCK_MODE_GANTRY)
         self.status_thread.gc.start()
         #self.output_box.image_label.set_status(False)
         # TODO: actually make this reset the entire state of the GUI
