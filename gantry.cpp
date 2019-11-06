@@ -433,7 +433,7 @@ void status_msg(const char* msg) {
     Serial.println(msg);
 }
 
-void decode_req_move_stepper(char* msg) {
+void decode_req_move_stepper(const char* msg) {
     // Get an array of 2 ints for x then y respectively
     int axes[2];
 
