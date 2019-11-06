@@ -1,3 +1,5 @@
+#include <Arduino.h>
+
 #define SCREW_LEAD_X	2
 #define SCREW_LEAD_Y	8
 #define SCREW_LEAD_Z	8
@@ -28,7 +30,20 @@
 #define LIMIT_Z_HOME_PIN 22
 #define potpin A2  // analog pin used to connect the potentiometer
 
-// Command Bytes
+#define HEADLESS 0 // where we just go through a basic series of operations with no cmds expected from pi
+
+// Requests from Pi
+#define REQ_ECHO_MSG (int) '0'
+#define REQ_POSITION_UPDATE (int) '1'
+#define REQ_MOVE_Y_HOME (int) '2'
+#define REQ_MOVE_STEPPER (int) '3'
+#define REQ_GO_TO_WORK (int) '4' // after pi gives coordinate pi tells to go ahead...
+#define REQ_RESET (int) '9'
+
+// Commands to Pi
+#define CMD_STATUS_MSG (int) '0'
+#define CMD_GANTRY_INITIALIZED (int) '1'
+#define CMD_POSITION_UPDATE (int) '2'
 #define CMD_WAIT_COORDINATE (int) '8'
 #define CMD_FINISH (int) '9'
 
@@ -50,5 +65,10 @@ void 	position_needle();
 void 	inject_needle();
 void	go_home();
 void 	move_y_back();
-void  move_back_from_IL();
+void    move_back_from_IL();
 void	pull_needle();
+
+void    decode_req_move_stepper(char* msg);
+void    send_cmd(int cmd);
+void    status_msg(const char* msg);
+int     process_req(const char* in_cmd);

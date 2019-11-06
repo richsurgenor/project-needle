@@ -12,13 +12,14 @@
 
 
 #include <gantry.hpp>
-#include <Arduino.h>
 #include <Servo.h>
 
 Servo myservo;  // create servo object to control a servo
 
 static int x_coord, y_coord, z_coord = 0;
 static bool enable = 0;
+
+//String cmd = "";
 
 /**********************************
  * FUNCTIONS IN ORDER OF EXECUTION
@@ -31,8 +32,12 @@ static bool enable = 0;
 *Inputs:   No input
 /********************************************************************/
 void gantry_init(){
-	Serial.begin(115200);
 	myservo.attach(A2);  // attaches the servo on pin A2 to the servo object
+	#if !HEADLESS
+	    status_msg("Initialized Gantry...");
+	    delay(1000);
+	    send_cmd(CMD_GANTRY_INITIALIZED);
+    #endif
 }
 
 /********************************************************************
@@ -43,7 +48,7 @@ void gantry_init(){
 /********************************************************************/
 void move_y_home(){
 
-	move_stepper(Y_AXIS, STEPS_TO_Y_HOME, FORWARD);
+	move_stepper(Y_AXIS, MM_TO_Y_HOME, FORWARD); // changed because STEPS_TO_Y_HOME was not declared
 
 }
 
@@ -65,7 +70,8 @@ int wait_for_coordinate(){
 		value[i] = Serial.read();
 		Serial.write(value[i]);
 	}
-	if(value[0] == CMD_WAIT_COORDINATE && value[4] == CMD_FINISH){
+	Serial.println(""); // send eol
+	if (value[0] == CMD_WAIT_COORDINATE && value[4] == CMD_FINISH){
          /* Concerns
           * If value[0] is not the start of this packet.. but value[1+n] happens to be..
           * in reality we will be waiting to read in cmds and flushing the buffer definitely shouldnt happen
@@ -192,7 +198,7 @@ void wait_for_error_check(){
 void inject_needle(){
 
 	int val;
-	
+
 	val = analogRead(potpin);            // reads the value of the potentiometer (value between 0 and 1023)
 	val = map(val, 0, 1023, 3, 180);     // scale it to use it with the servo (value between 0 and 180)
 	myservo.write(val);                  // sets the servo position according to the scaled value
@@ -204,9 +210,9 @@ void inject_needle(){
 }
 
 void pull_needle(){
-		
+
 	int val;
-	
+
 	val = analogRead(potpin);            // reads the value of the potentiometer (value between 0 and 1023)
 	val = map(val, 0, 1023, 3, 180);     // scale it to use it with the servo (value between 0 and 180)
 	myservo.write(val);                  // sets the servo position according to the scaled value
@@ -214,13 +220,13 @@ void pull_needle(){
 
 }
 void move_back_from_IL(){	//this will probably only be used for my testing purposes
-	
+
 	int y_dist_travelled = ( MM_TO_Y_HOME + y_coord ) - NEEDLE_Y_PROJ;
 	int x_dist_travelled = x_coord + NEEDLE_X_PROJ;
-	
+
 	move_stepper(X_AXIS, x_dist_travelled, BACKWARD);
 	move_stepper(Y_AXIS, y_dist_travelled, BACKWARD);
-	
+
 }
 
 /********************************************************************
@@ -261,10 +267,10 @@ void go_home(){
 *		   distance (e.g. 0 to 1000)mm - distance to travel
 /********************************************************************/
 int mm_to_steps(int axis, double distance){
-	
+
 	int totalSteps;
 	int screw_lead_axis;
-	
+
 	if(axis == X_AXIS){
 		screw_lead_axis = SCREW_LEAD_X;
 	}
@@ -276,7 +282,7 @@ int mm_to_steps(int axis, double distance){
 	}
 
 	totalSteps = (double)STEPS_PER_REVOLUTION * ( 1 / (double)screw_lead_axis) * ((double)(distance + 1));
-	
+
 	return(totalSteps);
 }
 
@@ -294,9 +300,9 @@ void select_direction_pin(int dir){
 		digitalWrite(DIR_PIN_X,  HIGH);
 		digitalWrite(DIR_PIN_Y1, HIGH);
 		digitalWrite(DIR_PIN_Y2, HIGH);
-		digitalWrite(DIR_PIN_Z,  HIGH);	
+		digitalWrite(DIR_PIN_Z,  HIGH);
 	}
-	
+
 	if(dir == BACKWARD){
 		digitalWrite(DIR_PIN_X,  LOW);
 		digitalWrite(DIR_PIN_Y1, LOW);
@@ -312,9 +318,9 @@ void select_direction_pin(int dir){
 *Inputs:   axis (X_AXIS, Y_AXIS, Z_AXIS) - axis to move
 /********************************************************************/
 int select_step_pin(int axis){
-	
+
 	int stepPin;
-	
+
 	if(axis == X_AXIS){
 		stepPin = STEP_PIN_X;
 	}
@@ -386,17 +392,19 @@ int move_stepper(int axis, int coordinate_mm, int dir){
 *Inputs:   no input
 /********************************************************************/
 int depth_finder(){
-	
+
 	int capSamples[10], debounceCap;
 	bool capOut;
 	int z_depth = 0;
-	
+
 	capOut = digitalRead (CAP_SENSE_PIN);
 		while(capOut == 0){
 			if(enable == 0){
 			//Serial.println(z_depth);
 			capOut = digitalRead(CAP_SENSE_PIN);
+			#if HEADLESS
 			Serial.println(capOut);
+			#endif
 			digitalWrite(STEP_PIN_Z, HIGH);
 			delay(2);
 			z_depth++;
@@ -413,6 +421,76 @@ int depth_finder(){
 			return(z_depth);
 		}
 	return(0);
+}
+
+void send_cmd(int cmd) {
+    Serial.write(cmd);
+    Serial.println("");
+}
+
+void status_msg(const char* msg) {
+    Serial.write(CMD_STATUS_MSG);
+    Serial.println(msg);
+}
+
+void decode_req_move_stepper(char* msg) {
+    // Get an array of 2 ints for x then y respectively
+    int axes[2];
+
+    //decode msg
+}
+
+/********************************************************************
+*Function: process_req
+*Purpose:  Process serial requests as they come in from the Pi
+*Returns:  Currently 0 unless a reset is requested then 100. This is because it's a bit
+*          of a pain to get functions from the ino->these library files, and the reset
+*          handler function wouldn't work unless it was defined in the ino :)
+*Inputs:   input msg with the command as the first byte
+/********************************************************************/
+int process_req(const char* msg) {
+    int cmd = int(msg[0]);
+    int m;
+    switch(cmd) {
+        case REQ_ECHO_MSG:
+            status_msg(msg+1); // pass ptr to msg+1 because first byte is cmd byte (this will just echo)
+            break;
+        case REQ_MOVE_Y_HOME:
+            status_msg("Moving Y Home...");
+            move_y_home();
+            send_cmd(CMD_WAIT_COORDINATE);
+
+            m = wait_for_coordinate();
+            break;
+        case REQ_MOVE_STEPPER:
+            status_msg("Moving stepper...");
+            decode_req_move_stepper(msg+1);
+            //move_stepper()
+            // TODO: splice string from msg
+            break;
+        case REQ_GO_TO_WORK:
+            status_msg("Going to work...");
+            move_cap_to_IL();
+            while(digitalRead(LIMIT_Y_HOME_PIN) != HIGH); // i dont think this will work because the gantry will never move after it hits this line... need interrupts on limit switches
+            position_needle();
+            while(digitalRead(LIMIT_Y_HOME_PIN) != HIGH);
+            inject_needle();
+            while(digitalRead(LIMIT_Y_HOME_PIN) != HIGH);
+            pull_needle();
+            while(digitalRead(LIMIT_Y_HOME_PIN) != HIGH);
+            move_back_from_IL();
+            break;
+        case REQ_RESET:
+            status_msg("Resetting...");
+            return 100;
+        default:
+            status_msg("undefined req!!");
+            break;
+    }
+
+    return 0;
+
+    //Serial.write(in_cmd);
 }
 
 /**********************************
