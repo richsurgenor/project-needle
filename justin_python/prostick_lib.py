@@ -18,6 +18,9 @@ from pyclustering.cluster.kmedoids import kmedoids
 import numpy as np
 import cv2
 import time
+import scipy as sp
+import scipy.ndimage
+from matplotlib import pyplot as plt
 
 
 def process_image(img_in, threshold, time_enable):
@@ -35,48 +38,21 @@ def process_image(img_in, threshold, time_enable):
     4) Apply the mask to the image created by (3)
     5) Extract the remaining points and return a 2xN numpy array
     """
-    total_time = 0
-    # Apply CLAHE to the image
-    start = time.time()
     clahe_img = apply_clahe(img_in, 5.0, (8, 8))
-    end = time.time()
-    total_time += (end - start)
-    if time_enable:
-        print("Time to apply CLAHE: ", (end - start), "s")
-
-    # Create the image mask using global thresholding
-    start = time.time()
     mask = create_mask(img_in, 100, 255)
-    end = time.time()
-    total_time += (end - start)
-    if time_enable:
-        print("Time to create mask: ", (end - start), "s")
-
-    # Apply Adaptive Mean Thresholding to the image
-    start = time.time()
     threshold = int(255*threshold)
     adapt_mean_th = adapt_thresh(clahe_img, 255, threshold, 20)
-    end = time.time()
-    total_time += (end - start)
-    if time_enable:
-        print("Time to apply Adaptive Mean Thresholding: ", (end - start), "s")
-
-    # Apply the mask using array operations (comparing each pixel of the mask with
-    # each pixel of the image
-    start = time.time()
     masked_img = apply_mask(adapt_mean_th, mask)
-    end = time.time()
-    total_time += (end - start)
-    if time_enable:
-        print("Time to apply mask using Numpy where: ", (end - start), "s")
-    # Create a list of the coordinates of the black pixels in the image
-    # for the k-means and k-medoids algorithms
-    start = time.time()
-    pic_array = extract_points(masked_img)
-    end = time.time()
-    if time_enable:
-        print("Time to extract points: ", (end - start), "s")
-    return np.array(pic_array)
+    mask_rail = rail_mask()
+    # for some reason this bit level logic on the images was really hard for me to do...
+    masked_img = (np.logical_and(mask_rail, masked_img)) + np.logical_not(mask_rail)
+    horizontal_v1 = create_strips()
+    horizontal_v2 = np.logical_not(horizontal_v1)
+    masked_img1 = np.logical_not((np.logical_or(horizontal_v1, masked_img)))
+    masked_img2 = np.logical_not((np.logical_or(horizontal_v2, masked_img)))
+    pic_array1 = extract_points(masked_img1)
+    pic_array2 = extract_points(masked_img2)
+    return np.array(pic_array1), np.array(pic_array2)
 
 
 def final_selection(centers):
@@ -105,7 +81,6 @@ def final_selection(centers):
             final_selection = each
 
     return final_selection
-
 
 
 def create_kmedoids(kmean_set, n):
@@ -195,6 +170,7 @@ def sort_and_compare(pset):
     i = 0
     holddist = 0
     avgd = 0
+    maxdist = 0
     while i < (len(sortedy)-1):
         dist = abs(sortedy[i + 1] - sortedy[i])
         avgd = avgd + dist
@@ -204,6 +180,7 @@ def sort_and_compare(pset):
 
     avgd = avgd / i
     return [avgd, maxdist]
+
 
 def check_injection(needle_image, iv_site):
     """
@@ -245,7 +222,6 @@ def create_mask(img, thresh, max_val):
     return mask_ret
 
 
-# Apply adaptive thresholding to the image
 def adapt_thresh(img, max_val, block_sz, c):
     """
     Apply Adaptive Mean Thresholding to an image.
@@ -297,7 +273,7 @@ def extract_points(img):
     :return: set of points that represent the veins
     """
     img = np.transpose(img)
-    return list(zip(*np.where(img == 0)))
+    return list(zip(*np.where(img == 1)))
 
 
 def get_xmedian(points):
@@ -318,3 +294,58 @@ def get_xmedian(points):
     sortedx = sorted(xpoints)
     middle = int(len(sortedx)/2)  # I do not care if this is not the exact median
     return sortedx[middle]
+
+
+def reduce_data(image, sigma_x, sigma_y):
+    """
+    :param image: processed image from image processing functions
+    :param sigma_x: unsure what this does; default this to 2
+    :param sigma_y: unsure what this does; default this to 3
+    :return: image with reduced points (e.g. I want to get 7000 pts from 70,000 pts)
+    """
+    sigma = [sigma_y, sigma_x]
+    y = sp.ndimage.filters.gaussian_filter(image, sigma, mode='constant')
+    return y
+
+
+def create_strips():
+    """
+    :return: image with horizontal areas removed (so 0's) and the rest 1's
+
+    Idea: if we remove segments of the vein data properly, we can force the kmean to
+    be faster because the data will resemble more traditional kmean problems. In essence,
+    continuities are bad; discontinuities are good.
+    """
+    horizontal = np.ones((2464, 3280))
+    # divide into size 154 segments
+    horizontal[0:154, :] = 0
+    horizontal[154*2:154*3, :] = 0
+    horizontal[154*4:154*5, :] = 0
+    horizontal[154*6:154*7, :] = 0
+    horizontal[154*8:154*9, :] = 0
+    horizontal[154*10:154*11, :] = 0
+    horizontal[154*12:154*13, :] = 0
+    horizontal[154*14:154*15, :] = 0
+    #horizontal[154*16:154*17, :] = 0
+    return horizontal
+
+
+def rail_mask():
+    """
+    :return: image with the gantry rails auto removed
+
+    I am having an issue with the gantry rails appearing in the image so I am going to perform a logical
+    operation on the numpy array to remove them.
+
+    The dimensions of the image are always the same and the gantry rails do not move so I will make the
+    values for this mask constant. No need to derive an algorithm for extracting them from the image.
+    """
+
+    # From observing the image, the gangtry rails reside from x = [0 800] and x = [2400 3280]
+    gantry_mask = np.ones((2464, 3280))
+    gantry_mask[:, 0:800] = 0
+    gantry_mask[:, 2400:3280] = 0
+    gantry_mask[0:200, :] = 0
+    gantry_mask[2300:2464, :] = 0
+    return gantry_mask
+

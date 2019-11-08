@@ -15,27 +15,30 @@ import numpy as np
 from matplotlib import pyplot as plt
 import time
 from sklearn.cluster import KMeans
+import spooky_lib as grid
 
 if __name__ == "__main__":
     # Read in the image
+    grid_horizontal = cv2.imread('grid6_horizontal.jpg', 0)
+    grid_vertical = cv2.imread('grid6_vertical.jpg', 0)
+    grid_horizontal = grid.process_grid(grid_horizontal, 0.6)
+    grid_vertical = grid.process_grid(grid_vertical, 0.6)
     time_enable = 1
-    img_in = cv2.imread('grid6.jpg', 0)
-    pic_array_np = iv.process_image(img_in, 0.5, time_enable)
+    start = time.time()
+    img_in = cv2.imread('justin3.jpg', 0)
+    pic_array_1, pic_array_2 = iv.process_image(img_in, 0.5, time_enable)
     # Run the K-Means algorithm to get 50 centers
-    start = time.time()
-    kmeans = KMeans(n_clusters=40)
-    kmeans.fit(pic_array_np)
-    y_kmeans = kmeans.predict(pic_array_np)
+    kmeans = KMeans(n_clusters=25)
+    kmeans.fit(pic_array_1)
     centers = kmeans.cluster_centers_
-    end = time.time()
-    if time_enable:
-        print("Time to create Kmean set: ", (end - start), "s")
-    # Now take the array "centers" and do a final selection using that dataset
-    start = time.time()
+    kmeans2 = KMeans(n_clusters=25)
+    kmeans2.fit(pic_array_2)
+    centers2 = kmeans2.cluster_centers_
+    centers = np.concatenate((centers, centers2), axis=0)
     final_selection = iv.final_selection(centers)
     end = time.time()
     if time_enable:
-        print("Time to choose final selection: ", (end - start), "s")
+        print("Time to make selection: ", (end - start), "s")
     # Plot all steps of the vein enhancement process
     plt.plot
     plt.imshow(img_in, 'gray')
@@ -43,3 +46,12 @@ if __name__ == "__main__":
     plt.scatter(final_selection[0], final_selection[1], c='red', s=10, alpha=0.5)
     plt.show()
     plt.clf()
+
+    # Now let's test the grid system and see if we can get a x mm and y mm command!
+    # Get the x y slices from the grids
+    xslice = grid_vertical[int(final_selection[0]), :]
+    yslice = grid_horizontal[:, int(final_selection[1])]
+    [xcount, ycount] = grid.count_bumps(final_selection, xslice, yslice)
+    print(final_selection)
+    print(str(xcount*5) + ' mm vertical')
+    print(str(ycount*5) + ' mm horizontal')
