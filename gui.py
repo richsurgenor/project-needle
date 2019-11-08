@@ -19,11 +19,13 @@ import sys
 import api
 import time
 import os
+import forwarding_server
 from scipy.io import savemat
 
 import common
 
 USING_PI = os.uname()[4][:3] == 'arm'
+FORWARDING = False
 
 if USING_PI:
     from pivideostream import PiVideoStream
@@ -66,7 +68,7 @@ else:
     SCALE_FACTOR = 2  # TODO: scale factor could be auto-calced..
     BORDER_SIZE = 10
 
-def ui_main():
+def ui_main(fwd=False):
     """
     Initialize main UI
     :return: None
@@ -79,6 +81,9 @@ def ui_main():
         app.setStyleSheet(stream.readAll())
     ui = MainWindow()
     sys.exit(app.exec_())
+
+    global FORWARDING
+    FORWARDING = fwd
 
 def _createCntrBtn(*args):
     l = QHBoxLayout()
@@ -309,7 +314,10 @@ class MainWindow(QMainWindow):
         if USING_PI:
             self.camera = PiVideoStream(resolution=(CAMERA_RESOLUTION_WIDTH, CAMERA_RESOLUTION_HEIGHT))
         else:
-            self.camera = Camera(0)
+            if FORWARDING:
+                self.camera = forwarding_server.ForwardingCamera()
+            else:
+                self.camera = Camera(0)
 
         self.camera.start()
 

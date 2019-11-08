@@ -1,3 +1,13 @@
+"""
+Project Needle
+Auburn  University
+Senior Design |  Fall 2019
+
+Team Members:
+Andrea Walker, Rich Surgenor, Jackson Solley, Jacob Hagewood,
+Justin Sutherland, Laura Grace Ayers.
+"""
+
 from picamera.array import PiRGBArray
 from picamera import PiCamera
 from threading import Thread
