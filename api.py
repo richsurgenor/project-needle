@@ -3,9 +3,12 @@
 from abc import abstractmethod
 import time
 import threading
-
 from serial import Serial
 import os
+
+import justin_python.prostick_lib as iv
+from sklearn.cluster import KMeans
+import numpy as np
 
 USING_PI = os.uname()[4][:3] == 'arm'
 
@@ -38,8 +41,45 @@ class ProcessorMock(AbstractProcessor):
 
 class Processor(AbstractProcessor):
 
-    def process_image(self, image):
-        pass
+    def preprocess_image(self, image):
+        """
+        Apply thresholding and CLAHE to the input image
+        :param image: input image
+        :return: preprocessed image
+        """
+
+        clahe_img = iv.apply_clahe(image, 5.0, (8, 8))
+        mask = iv.create_mask(image, 100, 255)
+        threshold = int(255 * 0.5)
+        adapt_mean_th = iv.adapt_thresh(clahe_img, 255, threshold, 20)
+        return iv.apply_mask(adapt_mean_th, mask)
+
+        pic_array_1, pic_array_2 = iv.process_image(image, 0.5, True)
+        # Run the K-Means algorithm to get 50 centers
+        kmeans = KMeans(n_clusters=25)
+        kmeans.fit(pic_array_1)
+        centers = kmeans.cluster_centers_
+        kmeans2 = KMeans(n_clusters=25)
+        kmeans2.fit(pic_array_2)
+        centers2 = kmeans2.cluster_centers_
+        centers = np.concatenate((centers, centers2), axis=0)
+
+        return centers
+
+    def get_optimum_points(self, image):
+        pic_array_1, pic_array_2 = iv.process_image(image, 0.5, True)
+        # Run the K-Means algorithm to get 50 centers
+        kmeans = KMeans(n_clusters=25)
+        kmeans.fit(pic_array_1)
+        centers = kmeans.cluster_centers_
+        kmeans2 = KMeans(n_clusters=25)
+        kmeans2.fit(pic_array_2)
+        centers2 = kmeans2.cluster_centers_
+        centers = np.concatenate((centers, centers2), axis=0)
+        return centers
+
+    def get_final_selection(self, centers):
+        return iv.final_selection(centers)
 
 
 def get_direction(current, target):

@@ -2,11 +2,9 @@
     ProStick Python Library
     Justin Sutherland
     10/19/2019
-
     File is structured simply as a large set of functions. This
     is commonly known as a "library". No library card required.
     This library shall be titled prostick_lib.py henceforth.
-
     Function library that contains all image processing functions
     such as thresholding, kmean, kmedoid, masking, etc. Any future
     functions for the coordinate system logic will reside in a separate
@@ -23,14 +21,13 @@ import scipy.ndimage
 from matplotlib import pyplot as plt
 
 
-def process_image(img_in, threshold, time_enable):
+def process_image(masked_img, threshold, time_enable):
     """
-    :param img_in: image taken by the Raspberry Pi camera
+    :param masked_img: preprocessed image
     :param threshold: 0 to 1 analog value, selected threshold for the adaptive thresholding step; this function will be
             used in the grid system, needle check, and main algorithm sections.
     :param time_enable: (boolean) enable time checks to find the execution time on the algorithm
     :return: the processed image POINTS that will be further analyzed (a 2xN numpy array)
-
     Algorithm Process is as follows:
     1) Apply the CLAHE
     2) Create the image mask
@@ -38,11 +35,6 @@ def process_image(img_in, threshold, time_enable):
     4) Apply the mask to the image created by (3)
     5) Extract the remaining points and return a 2xN numpy array
     """
-    clahe_img = apply_clahe(img_in, 5.0, (8, 8))
-    mask = create_mask(img_in, 100, 255)
-    threshold = int(255*threshold)
-    adapt_mean_th = adapt_thresh(clahe_img, 255, threshold, 20)
-    masked_img = apply_mask(adapt_mean_th, mask)
     mask_rail = rail_mask()
     # for some reason this bit level logic on the images was really hard for me to do...
     masked_img = (np.logical_and(mask_rail, masked_img)) + np.logical_not(mask_rail)
@@ -59,7 +51,6 @@ def final_selection(centers):
     """
     :param centers: kmean dataset
     :return: final [x, y] coordinate set for the injection site
-
     We want the final selection site to be one that has a neighborhood with low variance in its
     neighbors x coordinates (i.e. resembles a vertical line). We are currently doing this by placing a
     box around each kmean point and analyzing how many points are above and below it as well as their respective
@@ -115,11 +106,9 @@ def check_box(kpoint, kset, width, height):
     :param width: box width
     :param height: box height
     :return: tuple containing the number of points in the box, and the standard deviation of the x
-
     The general idea behind this function is that every kmedoid point (or potentially every kmean point)
     can be analyzed simply by throwing a vertical box around it and finding how many points are in the box and
     how varied the x coordinates are (less varied --> more vertically aligned and the better injection site)
-
     This is significantly simpler than the other method. The most important part that needs to be checked is that
     the kset input is passed correctly and is iterated through correctly. It's a numpy array so that makes it a
     little more difficult to do than a traditional array.
@@ -280,11 +269,11 @@ def get_xmedian(points):
     """
     :param points: final kmean set
     :return: new_points: median of the x coordinates
-    
+
     I am having an issue where some points are making it through the process image algorithm and are
     on the gantry rails and not from the arm. These points are also perfectly verticle so they are causing serious
     problems in the final selection algorithm.
-    
+
     We will call this function in final selection. Iterating through the entire dataset would take too long.
     """
     xpoints = []
@@ -311,7 +300,6 @@ def reduce_data(image, sigma_x, sigma_y):
 def create_strips():
     """
     :return: image with horizontal areas removed (so 0's) and the rest 1's
-
     Idea: if we remove segments of the vein data properly, we can force the kmean to
     be faster because the data will resemble more traditional kmean problems. In essence,
     continuities are bad; discontinuities are good.
@@ -333,10 +321,8 @@ def create_strips():
 def rail_mask():
     """
     :return: image with the gantry rails auto removed
-
     I am having an issue with the gantry rails appearing in the image so I am going to perform a logical
     operation on the numpy array to remove them.
-
     The dimensions of the image are always the same and the gantry rails do not move so I will make the
     values for this mask constant. No need to derive an algorithm for extracting them from the image.
     """
@@ -348,4 +334,3 @@ def rail_mask():
     gantry_mask[0:200, :] = 0
     gantry_mask[2300:2464, :] = 0
     return gantry_mask
-

@@ -19,14 +19,21 @@ import spooky_lib as grid
 
 if __name__ == "__main__":
     # Read in the image
-    grid_horizontal = cv2.imread('grid6_horizontal.jpg', 0)
-    grid_vertical = cv2.imread('grid6_vertical.jpg', 0)
+    grid_horizontal = cv2.imread('coord_static_y.png', 0)
+    grid_vertical = cv2.imread('coord_static_x.png', 0)
     grid_horizontal = grid.process_grid(grid_horizontal, 0.6)
     grid_vertical = grid.process_grid(grid_vertical, 0.6)
     time_enable = 1
     start = time.time()
-    img_in = cv2.imread('justin3.jpg', 0)
-    pic_array_1, pic_array_2 = iv.process_image(img_in, 0.5, time_enable)
+    img_in = cv2.imread("jacob1.jpg", 0)
+
+    clahe_img = iv.apply_clahe(img_in, 5.0, (8, 8))
+    mask = iv.create_mask(img_in, 100, 255)
+    threshold = int(255 * 0.5)
+    adapt_mean_th = iv.adapt_thresh(clahe_img, 255, threshold, 20)
+    preprocessed_img = iv.apply_mask(adapt_mean_th, mask)
+
+    pic_array_1, pic_array_2 = iv.process_image(preprocessed_img, 0.5, time_enable)
     # Run the K-Means algorithm to get 50 centers
     kmeans = KMeans(n_clusters=25)
     kmeans.fit(pic_array_1)

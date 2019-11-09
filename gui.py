@@ -52,6 +52,8 @@ else:
 
     DARK_THEME = 0
     SAVE_RAWIMG = 0
+    FAKE_INPUT_IMG = 1
+    FAKE_INPUT_IMG_NAME = "./fake_images/fake1.jpg"
 
     MOCK_MODE_IMAGE_PROCESSING = 1
     MOCK_MODE_GANTRY = 1
@@ -67,6 +69,19 @@ else:
     IMAGE_SIZE_HEIGHT = 368  # 368
     SCALE_FACTOR = 2  # TODO: scale factor could be auto-calced..
     BORDER_SIZE = 10
+
+FAKE_INPUT_IMG = 1
+if FAKE_INPUT_IMG:
+    FAKE_INPUT_IMG_NAME = "./fake_images/fake1.jpg"
+    CAMERA_RESOLUTION_WIDTH = 3280
+    CAMERA_RESOLUTION_HEIGHT = 2464
+    IMAGE_SIZE_WIDTH = 820  # 640
+    IMAGE_SIZE_HEIGHT = 616  # 368
+    CROPPING_ENABLED = 0
+    CROPPED_RESOLUTION_WIDTH = 1000
+    CROPPED_RESOLUTION_HEIGHT = 720
+    SCALE_FACTOR = 3
+
 
 def ui_main(fwd=False):
     """
@@ -187,12 +202,20 @@ class PreviewThread(QThread):
         self.video_frame = video_frame
 
     def next_frame_slot(self):
-        frame = self.camera.get_frame()
+        if FAKE_INPUT_IMG:
+            frame = cv2.imread(FAKE_INPUT_IMG_NAME, 1)
+            frame = cv2.resize(frame, dsize=(IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT), interpolation=cv2.INTER_CUBIC)
+            cv2.imwrite('testproc.jpg', frame)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        else:
+            frame = self.camera.get_frame()
 
         # Sometimes the first few frame are null, so we will ignore them.
         if frame is None:
             return
-        frame = common.cropND(frame, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
+
+        if CROPPING_ENABLED:
+            frame = common.cropND(frame, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
         #savemat('data.mat', {'frame': frame, 'framee': framee})
         img = QImage(numpy.asarray(frame, order='C'), frame.shape[1], frame.shape[0], QImage.Format_RGB888)
         pix = QPixmap.fromImage(img)
@@ -311,15 +334,19 @@ class MainWindow(QMainWindow):
         super(QMainWindow, self).__init__()
         #self.resize(1200, 800)
 
-        if USING_PI:
-            self.camera = PiVideoStream(resolution=(CAMERA_RESOLUTION_WIDTH, CAMERA_RESOLUTION_HEIGHT))
-        else:
-            if FORWARDING:
-                self.camera = forwarding_server.ForwardingCamera()
-            else:
-                self.camera = Camera(0)
+        self.camera = None
 
-        self.camera.start()
+        if not FAKE_INPUT_IMG:
+            if USING_PI:
+                self.camera = PiVideoStream(resolution=(CAMERA_RESOLUTION_WIDTH, CAMERA_RESOLUTION_HEIGHT))
+            else:
+                if FORWARDING:
+                    self.camera = forwarding_server.ForwardingCamera()
+                else:
+                    self.camera = Camera(0)
+
+            self.camera.start()
+
 
         self.processor = get_processor(self.camera)
         self.wid = QWidget(self)
@@ -332,10 +359,20 @@ class MainWindow(QMainWindow):
         self.status = QStatusBar()
         self._layout.addWidget(self.status)
 
+        self.checkbox_widget = QWidget()
+        self.checkboxes_layout = QHBoxLayout()
+        self.checkbox_widget.setLayout(self.checkboxes_layout)
         self.checkbox = QCheckBox("Automatic Mode")
-        self.checkbox.setCheckState(Qt.Checked)
+        self.checkbox.setCheckState(Qt.Unchecked)
+        self.checkbox2 = QCheckBox("Semiautomatic Mode")
+        self.checkbox2.setCheckState(Qt.Checked)
+        self.checkbox3 = QCheckBox("Manual Mode")
+        self.checkbox3.setCheckState(Qt.Unchecked)
         #self.checkbox.initStyleOption
-        self._layout.addWidget(self.checkbox)
+        self.checkboxes_layout.addWidget(self.checkbox)
+        self.checkboxes_layout.addWidget(self.checkbox2)
+        self.checkboxes_layout.addWidget(self.checkbox3)
+        self._layout.addWidget(self.checkbox_widget)
 
         #self._layout.addWidget(self.centralWidget)
         self.pic_widget = QImageBox("Image View")
@@ -447,7 +484,8 @@ class MainWindow(QMainWindow):
         """
         print("Processing...")
         raw = self.camera.get_frame()
-        raw = common.cropND(raw, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
+        if CROPPING_ENABLED:
+            raw = common.cropND(raw, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
         cv_img, points = self.processor.process_image(raw)
         cv_img_bgr = cv2.cvtColor(cv_img, cv2.COLOR_RGB2BGR)
         height, width, channel = cv_img.shape
