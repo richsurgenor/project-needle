@@ -70,7 +70,7 @@ else:
     SCALE_FACTOR = 2  # TODO: scale factor could be auto-calced..
     BORDER_SIZE = 10
 
-FAKE_INPUT_IMG = 1
+FAKE_INPUT_IMG = 0
 if FAKE_INPUT_IMG:
     FAKE_INPUT_IMG_NAME = "./fake_images/fake1.jpg"
     CAMERA_RESOLUTION_WIDTH = 3280
@@ -119,6 +119,23 @@ def get_controller():
         return api.GantryControllerMock()
     else:
         return api.GantryController()
+
+class FakeCamera:
+    def __init__(self):
+        self.rawframe = cv2.imread(FAKE_INPUT_IMG_NAME, 1)
+        # self.rawframe = cv2.resize(self.rawframe, dsize=(IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT), interpolation=cv2.INTER_CUBIC)
+        # cv2.imwrite('testproc.jpg', self.rawframe)
+        self.opened = False
+        self.fakepic = cv2.cvtColor(self.rawframe, cv2.COLOR_RGB2BGR)
+
+    def get_frame(self):
+        return self.fakepic
+
+    def start(self):
+        self.opened = True
+
+    def stop(self):
+        pass
 
 class Camera:
     def __init__(self, camera_num):
@@ -200,28 +217,32 @@ class PreviewThread(QThread):
         super().__init__()
         self.camera = camera
         self.video_frame = video_frame
+        self.rawframe = None
+        self.inputbox = video_frame
 
     def next_frame_slot(self):
-        if FAKE_INPUT_IMG:
-            frame = cv2.imread(FAKE_INPUT_IMG_NAME, 1)
-            frame = cv2.resize(frame, dsize=(IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT), interpolation=cv2.INTER_CUBIC)
-            cv2.imwrite('testproc.jpg', frame)
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        else:
-            frame = self.camera.get_frame()
+        self.rawframe = self.camera.get_frame()
 
         # Sometimes the first few frame are null, so we will ignore them.
-        if frame is None:
+        if self.rawframe is None:
             return
 
+
         if CROPPING_ENABLED:
-            frame = common.cropND(frame, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
+            self.rawframe = common.cropND(self.rawframe, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
         #savemat('data.mat', {'frame': frame, 'framee': framee})
-        img = QImage(numpy.asarray(frame, order='C'), frame.shape[1], frame.shape[0], QImage.Format_RGB888)
+        #img = cv2.resize(self.rawframe, (IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT))
+        img = QImage(numpy.asarray(self.rawframe, order='C'), self.rawframe.shape[1], self.rawframe.shape[0], QImage.Format_RGB888)
+
+
         pix = QPixmap.fromImage(img)
-        #if not USING_PI:
+
         pix = pix.scaled(IMAGE_SIZE_WIDTH,IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
-        self.video_frame.setPixmap(pix)
+        #self.video_frame.setPixmap(pix)
+
+        self.video_frame.img = pix
+        self.video_frame.start()
+        self.video_frame.update() # rather than repaint bc flicker
 
     def run(self):
         while True:
@@ -325,6 +346,38 @@ class QImageLabel(QLabel):
     def sizeHint(self):
         return QSize(IMAGE_SIZE_WIDTH + BORDER_SIZE, IMAGE_SIZE_HEIGHT + BORDER_SIZE)
 
+class QInputBox(QLabel):
+    def __init__(self, _, img):
+        super(QLabel, self).__init__(_)
+        self.setFrameShape(QFrame.Panel)
+        #self.setFrameStyle("background-color: rgb(255, 255, 255")
+        self.setFrameShadow(QFrame.Raised)
+        self.setLineWidth(3)
+        self.setMidLineWidth(3)
+        #self.mousePressEvent = self.getPos
+        self.img = img
+        self.setSizePolicy(QSizePolicy.Fixed,QSizePolicy.Fixed)
+        self.started = False
+        self.loc = BORDER_SIZE/2
+
+    def set_status(self, status):
+        pass
+
+    """"""
+    def paintEvent(self, e):
+        QLabel.paintEvent(self, e)
+        p = QPainter(self)
+
+        if self.start:
+            p.drawPixmap(QPoint(self.loc, self.loc), self.img)
+        #print(self.img.size())
+
+    def start(self):
+        self.started = True
+
+    def sizeHint(self):
+        return QSize(IMAGE_SIZE_WIDTH + BORDER_SIZE, IMAGE_SIZE_HEIGHT + BORDER_SIZE)
+
 class MainWindow(QMainWindow):
     """
     Main window for application.
@@ -336,7 +389,9 @@ class MainWindow(QMainWindow):
 
         self.camera = None
 
-        if not FAKE_INPUT_IMG:
+        if FAKE_INPUT_IMG:
+            self.camera = FakeCamera()
+        else:
             if USING_PI:
                 self.camera = PiVideoStream(resolution=(CAMERA_RESOLUTION_WIDTH, CAMERA_RESOLUTION_HEIGHT))
             else:
@@ -381,7 +436,7 @@ class MainWindow(QMainWindow):
         self.pics_hbox.setSpacing(10)
         self.pic_widget.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
 
-        self.video_frame = QLabel()
+        self.video_frame = QInputBox("", None)
         self.input_box = QGroupBox("Input Image") #QImageGroupBox("Input Image", self.video_frame)
         self.input_box_status = QLabel("Change Camera: ")
 
@@ -394,6 +449,7 @@ class MainWindow(QMainWindow):
         self.feed = PreviewThread(self.camera, self.video_frame)
         self.feed.start()
 
+        # Init thread that manages Gantry...
         self.status_thread = StatusThread(self.status)
         self.status_thread.start()
 
@@ -483,7 +539,7 @@ class MainWindow(QMainWindow):
         :return: None
         """
         print("Processing...")
-        raw = self.camera.get_frame()
+        raw = self.feed.rawframe
         if CROPPING_ENABLED:
             raw = common.cropND(raw, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
         cv_img, points = self.processor.process_image(raw)
