@@ -11,14 +11,20 @@
     library titled "spooky"
 """
 
+from sklearn.cluster import KMeans
+from sklearn.cluster import MiniBatchKMeans
 import math
 from pyclustering.cluster.kmedoids import kmedoids
+from pyclustering.cluster.elbow import elbow
+from pyclustering.cluster.kmeans import kmeans, kmeans_visualizer
+from pyclustering.cluster.center_initializer import kmeans_plusplus_initializer
 import numpy as np
 import cv2
 import time
 import scipy as sp
 import scipy.ndimage
 from matplotlib import pyplot as plt
+import justin_python.spooky_lib as grid
 
 
 def process_image(masked_img, threshold, time_enable):
@@ -334,3 +340,26 @@ def rail_mask():
     gantry_mask[0:200, :] = 0
     gantry_mask[2300:2464, :] = 0
     return gantry_mask
+
+
+def execute_kmean(dataset, nclusters):
+    """
+    :param dataset: valid vein points from image processing
+    :param nclusters: number of clusters to generate
+    :return: set of n number of cluster centers
+    """
+    kmeans = MiniBatchKMeans(n_clusters=nclusters, random_state=0).fit(dataset)  # default is Kmeans++ so this function auto does that for us
+    return kmeans.cluster_centers_
+
+
+def initialize_grids(file_horizontal, file_vertical):
+    """
+    :param file_horizontal: address of file containing horizontal grid information
+    :param file_vertical: address of file containing vertical grid information
+    :return: two grid arrays, grid_vertical and grid_horizontal
+    """
+    grid_horizontal = cv2.imread(file_horizontal, 0)
+    grid_vertical = cv2.imread(file_vertical, 0)
+    grid_horizontal = grid.process_grid(grid_horizontal, 0.6)
+    grid_vertical = grid.process_grid(grid_vertical, 0.6)
+    return grid_vertical, grid_horizontal

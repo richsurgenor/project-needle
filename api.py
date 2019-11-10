@@ -60,13 +60,10 @@ class Processor(AbstractProcessor):
     def get_optimum_points(self, image):
         pic_array_1, pic_array_2 = iv.process_image(image, 0.5, True)
         # Run the K-Means algorithm to get 50 centers
-        kmeans = KMeans(n_clusters=25)
-        kmeans.fit(pic_array_1)
-        centers = kmeans.cluster_centers_
-        kmeans2 = KMeans(n_clusters=25)
-        kmeans2.fit(pic_array_2)
-        centers2 = kmeans2.cluster_centers_
-        centers = np.concatenate((centers, centers2), axis=0)
+        nclusters = 50
+        centers_first = iv.execute_kmean(pic_array_1, int(nclusters / 2))
+        centers_second = iv.execute_kmean(pic_array_2, int(nclusters / 2))
+        centers = np.concatenate((centers_first, centers_second), axis=0)
         return centers
 
     def get_final_selection(self, centers):
