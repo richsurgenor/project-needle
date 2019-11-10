@@ -41,15 +41,16 @@ class ProcessorMock(AbstractProcessor):
 
 class Processor(AbstractProcessor):
 
-    def preprocess_image(self, image):
+    def apply_clahe(self, image):
+        return iv.apply_clahe(image, 5.0, (8, 8))
+
+    def apply_thresholding(self, clahe_img):
         """
         Apply thresholding and CLAHE to the input image
         :param image: input image
         :return: preprocessed image
         """
-
-        clahe_img = iv.apply_clahe(image, 5.0, (8, 8))
-        mask = iv.create_mask(image, 100, 255)
+        mask = iv.create_mask(clahe_img, 100, 255)
         threshold = int(255 * 0.5)
         adapt_mean_th = iv.adapt_thresh(clahe_img, 255, threshold, 20)
         masked = iv.apply_mask(adapt_mean_th, mask)
@@ -98,7 +99,8 @@ class GantryMock(threading.Thread):
         self.initialize_gantry()
 
         while True:
-            line = self.gantry_buffer.get() # blocks..
+            # blocks.. allows us to use a normal thread instead of Event
+            line = self.gantry_buffer.get()
             req = chr(line[0])
             if req == REQ_ECHO_MSG:
                 self.send_cmd(CMD_STATUS_MSG, line[1:].decode())
@@ -122,6 +124,9 @@ class GantryMock(threading.Thread):
         else:
             mymsg = cmd
         self.write_pi(mymsg)
+
+    def is_open(self):
+        return True
 
     #def simulate(self):
     #
@@ -273,24 +278,23 @@ class GantryController(AbstractGantryController):
     def run(self):
         print("started gantry controller thread...")
         while not self.stopped:
-            if self.gantry.inWaiting() > 0:
-                line = self.gantry.readline()
-                line = line.rstrip()
-                if len(line) > 0: # for some reason a newline character is by itself after readline
-                    cmd = line[0:1]
+            line = self.gantry.readline()
+            line = line.rstrip()
+            if len(line) > 0: # for some reason a newline character is by itself after readline
+                cmd = line[0:1]
 
-                    if cmd == CMD_GANTRY_INITIALIZED:
-                        self.msg = 'Moving Y Home...'
-                        self.send_msg(REQ_MOVE_Y_HOME)
-                    elif cmd == CMD_STATUS_MSG:
-                        msg = line[1:].decode('ascii')
-                        print(msg)
-                        self.msg = msg
-                    elif cmd == CMD_WAIT_COORDINATE:
-                        print("Received request for coordinate...");
-                        self.coordinate_request = True
-                    elif cmd == CMD_POSITION_UPDATE:
-                        print("Received position update...")
+                if cmd == CMD_GANTRY_INITIALIZED:
+                    self.msg = 'Moving Y Home...'
+                    self.send_msg(REQ_MOVE_Y_HOME)
+                elif cmd == CMD_STATUS_MSG:
+                    msg = line[1:].decode('ascii')
+                    print(msg)
+                    self.msg = msg
+                elif cmd == CMD_WAIT_COORDINATE:
+                    print("Received request for coordinate...");
+                    self.coordinate_request = True
+                elif cmd == CMD_POSITION_UPDATE:
+                    print("Received position update...")
 
         print("gantry thread ended...")
 

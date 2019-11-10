@@ -10,7 +10,7 @@ Justin Sutherland, Laura Grace Ayers.
 
 # GUI for Project Needle, mainly allowing the user to view ideal points for needle insertion to veins.
 
-from PyQt5.QtCore import Qt, QSize, QThread, QFile, QTextStream, QPoint
+from PyQt5.QtCore import Qt, QCoreApplication, QSize, QThread, QFile, QTextStream, QPoint
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QPixmap, QPainter, QImage, QColor
 import numpy
@@ -34,10 +34,11 @@ if USING_PI:
     from pivideostream import PiVideoStream
 
     DARK_THEME = 1
-    SAVE_RAWIMG = 0
+    SAVE_RAWIMG = 0                  # Save image after capture
 
-    MOCK_MODE_IMAGE_PROCESSING = 0
-    MOCK_MODE_GANTRY = 0
+    GANTRY_ON = 1                    # Control Gantry on/off for normal/mock modes
+    MOCK_MODE_IMAGE_PROCESSING = 0   # Fake image processing but still run everything else
+    MOCK_MODE_GANTRY = 0             # Fake Gantry connection but still run everything else
 
     CAMERA_RESOLUTION_WIDTH = 1920
     CAMERA_RESOLUTION_HEIGHT = 1080
@@ -54,6 +55,7 @@ else:
     DARK_THEME = 0
     SAVE_RAWIMG = 0
 
+    GANTRY_ON = 1
     MOCK_MODE_IMAGE_PROCESSING = 0
     MOCK_MODE_GANTRY = 1
 
@@ -177,8 +179,9 @@ class StatusThread(QThread):
     def __init__(self, status):
         super().__init__()
         self.status = status
-        self.gc = api.GantryController(MOCK_MODE_GANTRY)
-        self.gc.start()
+        if GANTRY_ON:
+            self.gc = api.GantryController(MOCK_MODE_GANTRY)
+            self.gc.start()
         self.msleep(100)
         #self.gc.send_msg(api.REQ_ECHO_MSG, "Connected to Arduino!")
 
@@ -283,12 +286,13 @@ class QProcessedImageGroupBox(QGroupBox):
     def getPos(self, event):
         # TODO: Reverse scaling to get closet coordinates...
 
-        if not self.points:
-            print('User tried to click point before any existed.')
-            return
+        #if not isinstance(self.points, list) or not isinstance(self.points, numpy.ndarray):
+        #    print('User tried to click point before any existed.')
+        #    return
 
-        selected_x = event.pos().x() - HALF_BORDER_SIZE
-        selected_y = event.pos().y() - HALF_BORDER_SIZE
+        print(type(self.points))
+        selected_x = event.pos().x() - HALF_BORDER_SIZE - 4
+        selected_y = event.pos().y() - HALF_BORDER_SIZE - 4
 
         best_x = 10000
         best_y = 10000
@@ -301,11 +305,11 @@ class QProcessedImageGroupBox(QGroupBox):
             # TODO: fix
 
             #estimated center of the reticle..
-            x += 31
-            y += 35
+            #x += 8
+            #y += 8
 
             diff_x = abs(selected_x - x)
-            diff_y = abs(selected_x - y)
+            diff_y = abs(selected_y - y)
             diff_sum = diff_x + diff_y
             if diff_sum < best_x+best_y:
                 best_x = diff_x
@@ -313,8 +317,8 @@ class QProcessedImageGroupBox(QGroupBox):
                 print("diff_x: " + str(selected_x - x) + " diff_y: " + str(selected_y - y))
                 chosen = i
         print("best_x: " + str(best_x) + " best_y: " + str(best_y))
-        self.display_coords.setText("x: " + str(selected_x) + " y: " + str(selected_y))
-        self.parent.draw_processed_img(self.image_label.img, self.points, chosen)
+        self.display_coords.setText("Coordinates: x: " + str(selected_x) + " y: " + str(selected_y))
+        self.parent.draw_processed_img_with_pts(self.image_label.img, self.points, chosen)
 
 
 class QImageLabel(QLabel):
@@ -484,11 +488,10 @@ class MainWindow(QMainWindow):
 
         self.show()
 
-    """
-    Events
-    """
 
-    def draw_preprocessed(self, img):
+    #class ProcessingThread(QThread): TODO: do we need this?
+
+    def draw_output_img(self, img):
         result = QPixmap(img.width(), img.height())
         painter = QPainter(result)
         # Paint final images on result
@@ -499,14 +502,13 @@ class MainWindow(QMainWindow):
 
     def draw_processed_img_with_pts(self, processed_img_scaled, scaled_points, chosen):
         """
-
         :param processed_img_scaled: scaled version of image
         :param scaled_points: scaled points
         :param chosen: index of point chosen from list of scaled_points
         :return: currently None
         """
         # Create Overlay Img with Transparency
-        overlay_img = QPixmap("assets/transparent_reticle.png")
+        overlay_img = QPixmap("assets/transp_bluedot.png") # transparent_reticle.png")
         overlay_alpha = QPixmap(overlay_img.size())
         overlay_alpha.fill(Qt.transparent)  # force alpha channel
         # Paint overlay_img onto overlay_alpha
@@ -522,8 +524,8 @@ class MainWindow(QMainWindow):
         painter.end()
 
         # processed_img = QPixmap("image3_results_n1.jpg")
-        overlay_scaled = overlay_alpha.scaled(55, 55, Qt.KeepAspectRatio)
-        overlay_scaled_green = overlay_alpha_cpy.scaled(55, 55, Qt.KeepAspectRatio)
+        overlay_scaled = overlay_alpha.scaled(10, 10, Qt.KeepAspectRatio)
+        overlay_scaled_green = overlay_alpha_cpy.scaled(10, 10, Qt.KeepAspectRatio)
         result = QPixmap(processed_img_scaled.width(), processed_img_scaled.height())
         result.fill(Qt.transparent)  # force alpha channel
         painter = QPainter(result)
@@ -532,36 +534,83 @@ class MainWindow(QMainWindow):
         for i in range(0, len(scaled_points)):
             point = scaled_points[i]
             if i == chosen:
-                painter.drawPixmap(point[0] + HALF_BORDER_SIZE, point[1] + HALF_BORDER_SIZE, overlay_scaled_green)
+                #x += 31
+                #y += 35
+                painter.drawPixmap(point[0], point[1], overlay_scaled_green)
             else:
-                painter.drawPixmap(point[0] + HALF_BORDER_SIZE, point[1] + HALF_BORDER_SIZE, overlay_scaled)
+                painter.drawPixmap(point[0], point[1], overlay_scaled)
         painter.end()
         self.output_box.points = scaled_points
         self.output_box.update_image(result)
         self.output_box.image_label.set_status(True)
 
+    """
+    Events
+    """
     def process_image_event(self):
         """
         Receive processed image and use the received points to display a final image.
         :return: None
         """
+        
+        #TODO: redo this whole function
         print("Processing...")
         raw = self.feed.rawframe
+        height, width, channels = raw.shape
+        bytes_per_line = width * 3
+        q_img = QImage(raw.copy().data, width, height, bytes_per_line, QImage.Format_RGB888)
+        processed_img = QPixmap.fromImage(q_img)
+        processed_img_scaled = processed_img.scaled(GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
+        self.draw_output_img(processed_img_scaled)
+        QCoreApplication.processEvents()
+        QThread.msleep(2000)
+
         if CROPPING_ENABLED:
             raw = common.cropND(raw, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
         grayimg = cv2.cvtColor(raw, cv2.COLOR_RGB2GRAY)
-        cv_img = self.processor.preprocess_image(grayimg)
+        clahe_img = self.processor.apply_clahe(grayimg)
         # we gray now...
-        height, width = cv_img.shape
+        height, width = clahe_img.shape
         bytes_per_line = width
-        q_img = QImage(cv_img.copy().data, width, height, bytes_per_line, QImage.Format_Grayscale8)
+        q_img = QImage(clahe_img.copy().data, width, height, bytes_per_line, QImage.Format_Grayscale8)
         if SAVE_RAWIMG:
-            cv2.imwrite('gui-rawimg.jpg', cv_img)
-
+            cv2.imwrite('gui-rawimg.jpg', clahe_img)
         processed_img = QPixmap.fromImage(q_img)
+
         processed_img_scaled = processed_img.scaled(GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
         #scaled_points = [(x / SCALE_FACTOR, y / SCALE_FACTOR) for x, y in points]
-        self.draw_preprocessed(processed_img_scaled)
+        self.draw_output_img(processed_img_scaled)
+
+        self.output_box.repaint()
+        QCoreApplication.processEvents()
+        QThread.msleep(2000)
+        thresholding_img = self.processor.apply_thresholding(clahe_img)
+        height, width = thresholding_img.shape
+        bytes_per_line = width
+        q_img = QImage(thresholding_img.copy().data, width, height, bytes_per_line, QImage.Format_Grayscale8)
+        processed_img = QPixmap.fromImage(q_img)
+        processed_img_scaled = processed_img.scaled(GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
+        self.draw_output_img(processed_img_scaled)
+
+        QCoreApplication.processEvents()
+        QThread.msleep(2000)
+        centers = self.processor.get_optimum_points(thresholding_img)
+        #numpy.savetxt('test2.txt', centers, fmt='%d')
+        points = numpy.copy(centers)
+
+        scalex = float(CAMERA_RESOLUTION_WIDTH) / GUI_IMAGE_SIZE_WIDTH
+        scaley = float(CAMERA_RESOLUTION_HEIGHT) / GUI_IMAGE_SIZE_HEIGHT
+        #scalex = int(scalex)
+        #scaley = int(scaley)
+
+        for point in points:
+            point[0] = round(point[0] / scalex)
+            point[1] = round(point[1] / scaley)
+            point[0] = point[0] + HALF_BORDER_SIZE - 8
+            point[1] = point[1] + HALF_BORDER_SIZE - 8
+
+        self.draw_processed_img_with_pts(processed_img_scaled, points, -1)
+        self.output_box.points = points
 
     def reset_event(self):
         self.status_thread.gc.send_msg(api.REQ_RESET)
@@ -580,6 +629,7 @@ class MainWindow(QMainWindow):
 
     def close_event(self):
         self.camera.stop()
+        #if self.
         gc = self.status_thread.gc
         if gc.gantry:
             if gc.gantry.is_open:
