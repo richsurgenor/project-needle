@@ -10,6 +10,7 @@ be installed within the Python environment this script is run in.
 
 import prostick_lib as iv
 from pyclustering.cluster.kmedians import kmedians
+from pyclustering.cluster.center_initializer import kmeans_plusplus_initializer
 import cv2
 import numpy as np
 from matplotlib import pyplot as plt
@@ -19,22 +20,15 @@ import spooky_lib as grid
 
 if __name__ == "__main__":
     # Read in the image
-    grid_horizontal = cv2.imread('grid6_horizontal.jpg', 0)
-    grid_vertical = cv2.imread('grid6_vertical.jpg', 0)
-    grid_horizontal = grid.process_grid(grid_horizontal, 0.6)
-    grid_vertical = grid.process_grid(grid_vertical, 0.6)
+    grid_horizontal, grid_vertical = iv.initialize_grids('coord_static_x.png', 'coord_static_y.png')
     time_enable = 1
     start = time.time()
-    img_in = cv2.imread('justin3.jpg', 0)
+    img_in = cv2.imread('justin1.jpg', 0)
     pic_array_1, pic_array_2 = iv.process_image(img_in, 0.5, time_enable)
-    # Run the K-Means algorithm to get 50 centers
-    kmeans = KMeans(n_clusters=25)
-    kmeans.fit(pic_array_1)
-    centers = kmeans.cluster_centers_
-    kmeans2 = KMeans(n_clusters=25)
-    kmeans2.fit(pic_array_2)
-    centers2 = kmeans2.cluster_centers_
-    centers = np.concatenate((centers, centers2), axis=0)
+    nclusters = 50  # make sure this is always divisible by 2
+    centers_first = iv.execute_kmean(pic_array_1, int(nclusters/2))
+    centers_second = iv.execute_kmean(pic_array_2, int(nclusters/2))
+    centers = np.concatenate((centers_first, centers_second), axis=0)
     final_selection = iv.final_selection(centers)
     end = time.time()
     if time_enable:
@@ -53,5 +47,5 @@ if __name__ == "__main__":
     yslice = grid_horizontal[:, int(final_selection[1])]
     [xcount, ycount] = grid.count_bumps(final_selection, xslice, yslice)
     print(final_selection)
-    print(str(xcount*5) + ' mm vertical')
-    print(str(ycount*5) + ' mm horizontal')
+    print(str(5*xcount) + ' mm horizontal')
+    print(str(5*ycount) + ' mm vertical')

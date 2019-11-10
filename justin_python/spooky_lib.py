@@ -87,15 +87,77 @@ def count_bumps(xy, xslice, yslice):
     return xcount, ycount
 
 
-def grid_interpolation(selection, vertical, horizontal):
+def count_and_interpolate(xy, xslice, yslice):
     """
-    :param selection: selection site
-    :param vertical:
-    :param horizontal:
-    :return:
+    :param xy: tuple representing the chosen injection site
+    :param xslice: slice of x coordinates (so this would be the longitude equivalent)
+    :param yslice: slice of y coordinates (so this would be the latitude equivalent)
+    :return: equivalent mm position (x and y)
     """
+    # Luckily, the x and y positions actually tell us exactly how far we have to go
+    # Truncate these arrays at the x y coordinate for this reason
+    xslice = xslice[0:int(xy[0])]
+    yslice = yslice[0:int(xy[1])]
+    xcount, xpixel = count_loop(xslice, xy, 1)
+    ycount, ypixel = count_loop(yslice, xy, 0)
+    print(xpixel)
+    print(ypixel)
+    return 5*xcount, 5*ycount
 
 
+def count_loop(array, selection, xory):
+    '''
+    :param array: slice from grid array
+    :param selection: tuple containing the injections site coordinates
+    :param xory: boolean for x or y; 0 is x, 1 is y
+    :return: grid line count and interpolated distance to next grid line in sequence
 
+    This algorithm is actually harder to pull off than I thought it would be. We have
+    to set several different flags throughout the loops so we can properly siphon off
+    the data we need to interpolate. Key thing to note here that we want to define the grid lines
+    at the center of the dark lines (so if we have 000001111X111100000, the 1s are the black grid
+    lines and the X will be what we referenced. Stuff like this makes this algorithm a little
+    more tedious than I would like, but we need to do it this way (from what I know of now)
+    '''
+    # slice = array[0:int(selection[xory])]
+    slice = array
+    grid_valid = False
+    count_enable_grid = False
+    count_enable_space = False
+    pixel_grid = 0
+    grid_count = 0
+    final_grid_count = 0
+    end_flag = False
+    final_flag = False
+    k = 0
+    for each in slice:
+        if each < 100 and ~(grid_valid):  # we just set foot on a grid line
+            if ~final_flag:
+                grid_valid = True
+                count_enable_grid, count_enable_space = True, False
+                pixel_space = 0
+                pixel_grid_array = []
+            else:
+                break
+        if each > 100 and grid_valid:    # we just went off a grid line
+            grid_count = grid_count + 1
+            grid_valid = False
+            count_enable_space, count_enable_grid = True, False
+            pixel_grid = 0
+            grid_average = np.sum(pixel_grid_array)/len(pixel_grid_array)
+        if count_enable_grid:  # fulfilled requirement #1
+            pixel_grid = pixel_grid + 1  # we need to do this to figure out the interpolation
+            pixel_grid_array.append(k)  # fulfilled requirement #2
+        if count_enable_space:
+            pixel_space = pixel_space + 1
+        if k == int(selection[xory]):
+            final_grid_count = grid_count
+            gridline_distance = k - grid_average  # we define this as the distance from the last grid line
+            # we want to keep going after this so we can find the next grid line so we can interpolate
+            final_flag = True
+
+        k = k + 1
+
+    return final_grid_count, pixel_space
 
 
