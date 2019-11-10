@@ -52,7 +52,9 @@ class Processor(AbstractProcessor):
         mask = iv.create_mask(image, 100, 255)
         threshold = int(255 * 0.5)
         adapt_mean_th = iv.adapt_thresh(clahe_img, 255, threshold, 20)
-        return iv.apply_mask(adapt_mean_th, mask)
+        masked = iv.apply_mask(adapt_mean_th, mask)
+        masked = masked.astype(np.uint8) # ??? numpy.where changes the dtype..
+        return masked
 
     def get_optimum_points(self, image):
         pic_array_1, pic_array_2 = iv.process_image(image, 0.5, True)

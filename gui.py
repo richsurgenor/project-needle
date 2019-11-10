@@ -46,14 +46,13 @@ if USING_PI:
     CROPPED_RESOLUTION_WIDTH = 1080
     CROPPED_RESOLUTION_HEIGHT = 1080
 
-    IMAGE_SIZE_WIDTH = 540  # 640
-    IMAGE_SIZE_HEIGHT = 540  # 368
+    GUI_IMAGE_SIZE_WIDTH = 540  # 640
+    GUI_IMAGE_SIZE_HEIGHT = 540  # 368
     SCALE_FACTOR = 2  # TODO: scale factor could be auto-calced..
 
 else:
     DARK_THEME = 0
     SAVE_RAWIMG = 0
-    FAKE_INPUT_IMG_NAME = "./fake_images/fake1.jpg"
 
     MOCK_MODE_IMAGE_PROCESSING = 0
     MOCK_MODE_GANTRY = 1
@@ -65,17 +64,17 @@ else:
     CROPPED_RESOLUTION_WIDTH = 1000
     CROPPED_RESOLUTION_HEIGHT = 720
 
-    IMAGE_SIZE_WIDTH = 500  # 640
-    IMAGE_SIZE_HEIGHT = 368  # 368
+    GUI_IMAGE_SIZE_WIDTH = 500  # 640
+    GUI_IMAGE_SIZE_HEIGHT = 368  # 368
     SCALE_FACTOR = 2  # TODO: scale factor could be auto-calced..
 
-FAKE_INPUT_IMG = 0
+FAKE_INPUT_IMG = 1
 if FAKE_INPUT_IMG:
     FAKE_INPUT_IMG_NAME = "./fake_images/fake1.jpg"
     CAMERA_RESOLUTION_WIDTH = 3280
     CAMERA_RESOLUTION_HEIGHT = 2464
-    IMAGE_SIZE_WIDTH = 820  # 640
-    IMAGE_SIZE_HEIGHT = 616  # 368
+    GUI_IMAGE_SIZE_WIDTH = 820  # 640
+    GUI_IMAGE_SIZE_HEIGHT = 616  # 368
     CROPPING_ENABLED = 0
     CROPPED_RESOLUTION_WIDTH = 1000
     CROPPED_RESOLUTION_HEIGHT = 720
@@ -122,7 +121,7 @@ def get_controller():
 class FakeCamera:
     def __init__(self):
         self.rawframe = cv2.imread(FAKE_INPUT_IMG_NAME, 1)
-        # self.rawframe = cv2.resize(self.rawframe, dsize=(IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT), interpolation=cv2.INTER_CUBIC)
+        # self.rawframe = cv2.resize(self.rawframe, dsize=(GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT), interpolation=cv2.INTER_CUBIC)
         # cv2.imwrite('testproc.jpg', self.rawframe)
         self.opened = False
         self.fakepic = cv2.cvtColor(self.rawframe, cv2.COLOR_RGB2BGR)
@@ -229,12 +228,12 @@ class PreviewThread(QThread):
         if CROPPING_ENABLED:
             self.rawframe = common.cropND(self.rawframe, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
         #savemat('data.mat', {'frame': frame, 'framee': framee})
-        #img = cv2.resize(self.rawframe, (IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT))
+        #img = cv2.resize(self.rawframe, (GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT))
         img = QImage(numpy.asarray(self.rawframe, order='C'), self.rawframe.shape[1], self.rawframe.shape[0], QImage.Format_RGB888)
 
         pix = QPixmap.fromImage(img)
 
-        pix = pix.scaled(IMAGE_SIZE_WIDTH,IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
+        pix = pix.scaled(GUI_IMAGE_SIZE_WIDTH,GUI_IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
         #self.video_frame.setPixmap(pix)
 
         self.video_frame.img = pix
@@ -344,7 +343,7 @@ class QImageLabel(QLabel):
         #print(self.img.size())
 
     def sizeHint(self):
-        return QSize(IMAGE_SIZE_WIDTH + BORDER_SIZE, IMAGE_SIZE_HEIGHT + BORDER_SIZE)
+        return QSize(GUI_IMAGE_SIZE_WIDTH + BORDER_SIZE, GUI_IMAGE_SIZE_HEIGHT + BORDER_SIZE)
 
 class QInputBox(QLabel):
     def __init__(self, _, img):
@@ -375,7 +374,7 @@ class QInputBox(QLabel):
         self.started = True
 
     def sizeHint(self):
-        return QSize(IMAGE_SIZE_WIDTH + BORDER_SIZE, IMAGE_SIZE_HEIGHT + BORDER_SIZE)
+        return QSize(GUI_IMAGE_SIZE_WIDTH + BORDER_SIZE, GUI_IMAGE_SIZE_HEIGHT + BORDER_SIZE)
 
 class MainWindow(QMainWindow):
     """
@@ -550,18 +549,17 @@ class MainWindow(QMainWindow):
         raw = self.feed.rawframe
         if CROPPING_ENABLED:
             raw = common.cropND(raw, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
-        greyimg = cv2.cvtColor(raw, cv2.COLOR_RGB2GRAY)
-        cv_img = self.processor.preprocess_image(greyimg)
-
-        cv_img_bgr = cv2.cvtColor(cv_img, cv2.COLOR_GRAY2RGBA)
+        grayimg = cv2.cvtColor(raw, cv2.COLOR_RGB2GRAY)
+        cv_img = self.processor.preprocess_image(grayimg)
+        # we gray now...
         height, width = cv_img.shape
-        bytes_per_line = 3 * width
-        q_img = QImage(cv_img.copy().data, width, height, bytes_per_line, QImage.Format_RGB888)
-        #if SAVE_RAWIMG:
-        cv2.imwrite('gui-rawimg.jpg', cv_img)
+        bytes_per_line = width
+        q_img = QImage(cv_img.copy().data, width, height, bytes_per_line, QImage.Format_Grayscale8)
+        if SAVE_RAWIMG:
+            cv2.imwrite('gui-rawimg.jpg', cv_img)
 
         processed_img = QPixmap.fromImage(q_img)
-        processed_img_scaled = processed_img.scaled(IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
+        processed_img_scaled = processed_img.scaled(GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
         #scaled_points = [(x / SCALE_FACTOR, y / SCALE_FACTOR) for x, y in points]
         self.draw_preprocessed(processed_img_scaled)
 
