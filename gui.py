@@ -10,7 +10,7 @@ Justin Sutherland, Laura Grace Ayers.
 
 # GUI for Project Needle, mainly allowing the user to view ideal points for needle insertion to veins.
 
-from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot, QSize, QThread, QFile, QTextStream, QPoint
+from PyQt5.QtCore import Qt, QSize, QThread, QFile, QTextStream, QPoint
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QPixmap, QPainter, QImage, QColor
 import numpy
@@ -27,13 +27,16 @@ import common
 USING_PI = os.uname()[4][:3] == 'arm'
 FORWARDING = False
 
+BORDER_SIZE = 10
+HALF_BORDER_SIZE = BORDER_SIZE/2
+
 if USING_PI:
     from pivideostream import PiVideoStream
 
     DARK_THEME = 1
     SAVE_RAWIMG = 0
 
-    MOCK_MODE_IMAGE_PROCESSING = 1
+    MOCK_MODE_IMAGE_PROCESSING = 0
     MOCK_MODE_GANTRY = 0
 
     CAMERA_RESOLUTION_WIDTH = 1920
@@ -46,16 +49,13 @@ if USING_PI:
     IMAGE_SIZE_WIDTH = 540  # 640
     IMAGE_SIZE_HEIGHT = 540  # 368
     SCALE_FACTOR = 2  # TODO: scale factor could be auto-calced..
-    BORDER_SIZE = 10
 
 else:
-
     DARK_THEME = 0
     SAVE_RAWIMG = 0
-    FAKE_INPUT_IMG = 1
     FAKE_INPUT_IMG_NAME = "./fake_images/fake1.jpg"
 
-    MOCK_MODE_IMAGE_PROCESSING = 1
+    MOCK_MODE_IMAGE_PROCESSING = 0
     MOCK_MODE_GANTRY = 1
 
     CAMERA_RESOLUTION_WIDTH = 1280
@@ -68,7 +68,6 @@ else:
     IMAGE_SIZE_WIDTH = 500  # 640
     IMAGE_SIZE_HEIGHT = 368  # 368
     SCALE_FACTOR = 2  # TODO: scale factor could be auto-calced..
-    BORDER_SIZE = 10
 
 FAKE_INPUT_IMG = 0
 if FAKE_INPUT_IMG:
@@ -227,13 +226,11 @@ class PreviewThread(QThread):
         if self.rawframe is None:
             return
 
-
         if CROPPING_ENABLED:
             self.rawframe = common.cropND(self.rawframe, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
         #savemat('data.mat', {'frame': frame, 'framee': framee})
         #img = cv2.resize(self.rawframe, (IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT))
         img = QImage(numpy.asarray(self.rawframe, order='C'), self.rawframe.shape[1], self.rawframe.shape[0], QImage.Format_RGB888)
-
 
         pix = QPixmap.fromImage(img)
 
@@ -281,6 +278,9 @@ class QProcessedImageGroupBox(QGroupBox):
     def get_layout(self):
         return self._layout
 
+    def update_image(self, img):
+        self.image_label.img = img
+
     def getPos(self, event):
         # TODO: Reverse scaling to get closet coordinates...
 
@@ -288,8 +288,8 @@ class QProcessedImageGroupBox(QGroupBox):
             print('User tried to click point before any existed.')
             return
 
-        selected_x = event.pos().x() - BORDER_SIZE/2
-        selected_y = event.pos().y() - BORDER_SIZE/2
+        selected_x = event.pos().x() - HALF_BORDER_SIZE
+        selected_y = event.pos().y() - HALF_BORDER_SIZE
 
         best_x = 10000
         best_y = 10000
@@ -340,7 +340,7 @@ class QImageLabel(QLabel):
         p = QPainter(self)
 
         if self.done:
-            p.drawPixmap(QPoint(BORDER_SIZE/2, BORDER_SIZE/2), self.img)
+            p.drawPixmap(QPoint(HALF_BORDER_SIZE, HALF_BORDER_SIZE), self.img)
         #print(self.img.size())
 
     def sizeHint(self):
@@ -358,7 +358,6 @@ class QInputBox(QLabel):
         self.img = img
         self.setSizePolicy(QSizePolicy.Fixed,QSizePolicy.Fixed)
         self.started = False
-        self.loc = BORDER_SIZE/2
 
     def set_status(self, status):
         pass
@@ -369,7 +368,7 @@ class QInputBox(QLabel):
         p = QPainter(self)
 
         if self.start:
-            p.drawPixmap(QPoint(self.loc, self.loc), self.img)
+            p.drawPixmap(QPoint(HALF_BORDER_SIZE, HALF_BORDER_SIZE), self.img)
         #print(self.img.size())
 
     def start(self):
@@ -486,11 +485,20 @@ class MainWindow(QMainWindow):
 
         self.show()
 
-
     """
     Events
     """
-    def draw_processed_img(self, processed_img_scaled, scaled_points, chosen):
+
+    def draw_preprocessed(self, img):
+        result = QPixmap(img.width(), img.height())
+        painter = QPainter(result)
+        # Paint final images on result
+        painter.drawPixmap(0, 0, img)
+        painter.end()
+        self.output_box.update_image(result)
+        self.output_box.image_label.set_status(True)
+
+    def draw_processed_img_with_pts(self, processed_img_scaled, scaled_points, chosen):
         """
 
         :param processed_img_scaled: scaled version of image
@@ -525,12 +533,12 @@ class MainWindow(QMainWindow):
         for i in range(0, len(scaled_points)):
             point = scaled_points[i]
             if i == chosen:
-                painter.drawPixmap(point[0] + BORDER_SIZE / 2, point[1] + BORDER_SIZE / 2, overlay_scaled_green)
+                painter.drawPixmap(point[0] + HALF_BORDER_SIZE, point[1] + HALF_BORDER_SIZE, overlay_scaled_green)
             else:
-                painter.drawPixmap(point[0] + BORDER_SIZE / 2, point[1] + BORDER_SIZE / 2, overlay_scaled)
+                painter.drawPixmap(point[0] + HALF_BORDER_SIZE, point[1] + HALF_BORDER_SIZE, overlay_scaled)
         painter.end()
         self.output_box.points = scaled_points
-        self.output_box.image_label.img = result
+        self.output_box.update_image(result)
         self.output_box.image_label.set_status(True)
 
     def process_image_event(self):
@@ -542,17 +550,20 @@ class MainWindow(QMainWindow):
         raw = self.feed.rawframe
         if CROPPING_ENABLED:
             raw = common.cropND(raw, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
-        cv_img, points = self.processor.process_image(raw)
-        cv_img_bgr = cv2.cvtColor(cv_img, cv2.COLOR_RGB2BGR)
-        height, width, channel = cv_img.shape
+        greyimg = cv2.cvtColor(raw, cv2.COLOR_RGB2GRAY)
+        cv_img = self.processor.preprocess_image(greyimg)
+
+        cv_img_bgr = cv2.cvtColor(cv_img, cv2.COLOR_GRAY2RGBA)
+        height, width = cv_img.shape
         bytes_per_line = 3 * width
         q_img = QImage(cv_img.copy().data, width, height, bytes_per_line, QImage.Format_RGB888)
-        if SAVE_RAWIMG:
-            cv2.imwrite('gui-rawimg.jpg', cv_img_bgr)
+        #if SAVE_RAWIMG:
+        cv2.imwrite('gui-rawimg.jpg', cv_img)
+
         processed_img = QPixmap.fromImage(q_img)
         processed_img_scaled = processed_img.scaled(IMAGE_SIZE_WIDTH, IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
-        scaled_points = [(x / SCALE_FACTOR, y / SCALE_FACTOR) for x, y in points]
-        self.draw_processed_img(processed_img_scaled, scaled_points, -1)
+        #scaled_points = [(x / SCALE_FACTOR, y / SCALE_FACTOR) for x, y in points]
+        self.draw_preprocessed(processed_img_scaled)
 
     def reset_event(self):
         self.status_thread.gc.send_msg(api.REQ_RESET)
@@ -572,9 +583,9 @@ class MainWindow(QMainWindow):
     def close_event(self):
         self.camera.stop()
         gc = self.status_thread.gc
-        if gc.arduino:
-            if gc.arduino.is_open:
-                self.status_thread.gc.arduino.close()
+        if gc.gantry:
+            if gc.gantry.is_open:
+                self.status_thread.gc.gantry.close()
                 print("closed serial interface..")
         time.sleep(1)
         qApp.exit()
