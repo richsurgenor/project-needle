@@ -4,8 +4,8 @@
 #define SCREW_LEAD_Y	8
 #define SCREW_LEAD_Z	8
 #define STEPS_PER_REVOLUTION	200
-#define MM_TO_Y_HOME	126
-#define NEEDLE_Z_PROJ	4.29
+#define MM_TO_Y_HOME	120  //was 151
+#define NEEDLE_Z_PROJ	1
 #define	NEEDLE_Y_PROJ	9.22
 #define NEEDLE_X_PROJ	21.5
 #define SERVO_BEGIN		0
@@ -16,12 +16,12 @@
 #define FORWARD 0
 #define BACKWARD 1
 #define STEP_PIN_X 49
-#define STEP_PIN_Y1 53
-#define STEP_PIN_Y2 52
+#define STEP_PIN_Y 53
+//#define STEP_PIN_Y2 52
 #define STEP_PIN_Z 46
 #define DIR_PIN_X 48
-#define DIR_PIN_Y1 51
-#define DIR_PIN_Y2 50
+#define DIR_PIN_Y 51
+//#define DIR_PIN_Y2 50
 #define DIR_PIN_Z 47
 #define CAP_SENSE_PIN	30
 #define SERVO_PIN	A0
