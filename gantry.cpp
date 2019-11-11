@@ -78,7 +78,7 @@ int wait_for_coordinate(){
 		Serial.println(value[i]);
 	}
 	Serial.println(""); // send eol
-	if (value[0] == CMD_WAIT_COORDINATE && value[4] == CMD_FINISH){
+	if (value[0] == CMD_WAIT_COORDINATE && value[4] == CMD_WAIT_COORDINATE_FINISH){
          /* Concerns
           * If value[0] is not the start of this packet.. but value[1+n] happens to be..
           * in reality we will be waiting to read in cmds and flushing the buffer definitely shouldnt happen
@@ -91,8 +91,8 @@ int wait_for_coordinate(){
           * moving the needle...
           */
 
-		for(int n = 1; n<4; n++){ // what is the purpose of this? offsetting the mm given?
-			value[n] -= 48; // put whatever 48 is in a gantry.hpp as a named constant.
+		for(int n = 1; n<4; n++){
+			value[n] -= 48; // offset in ascii
 			value[n+4] -= 48;
 		}
 
@@ -454,11 +454,29 @@ void status_msg(const char* msg) {
     Serial.println(msg);
 }
 
-void decode_req_move_stepper(const char* msg) {
-    // Get an array of 2 ints for x then y respectively
-    int axes[2];
+void decode_coordinate(const char* msg) {
+    // For now we will say xxxx xxxx where each group of x is the x then y
+    if (strlen(msg) != 9) {
+        char output[50];
+        sprintf(output, "Invalid coordinate. You passed size: %d", strlen(msg));
+        status_msg(output);
+        return;
+    }
+    char x[5];
+    char y[5];
 
-    //decode msg
+    memcpy( x, msg, 4 ); // read first 4 chars
+    x[4] = '\0';
+    memcpy( y, msg+4, 4 ); // read last 4 chars
+    y[4] = '\0';
+
+    int result[2];
+    result[0] = atoi(x);
+    result[1] = atoi(y);
+
+    char output[50];
+    sprintf(output, "x: %d y: %d\n", result[0], result[1]);
+    status_msg(output);
 }
 
 /********************************************************************
@@ -485,7 +503,8 @@ int process_req(const char* msg) {
             break;
         case REQ_MOVE_STEPPER:
             status_msg("Moving stepper...");
-            decode_req_move_stepper(msg+1);
+            decode_coordinate(msg+1);
+            status_msg(msg);
             //move_stepper()
             // TODO: splice string from msg
             break;

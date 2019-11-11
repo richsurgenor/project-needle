@@ -45,7 +45,7 @@
 #define CMD_GANTRY_INITIALIZED (int) '1'
 #define CMD_POSITION_UPDATE (int) '2'
 #define CMD_WAIT_COORDINATE (int) '8'
-#define CMD_FINISH (int) '9'
+#define CMD_WAIT_COORDINATE_FINISH (int) '9'
 
 /*extern volatile int x_coord;
 extern volatile int y_coord;
@@ -68,7 +68,7 @@ void 	move_y_back();
 void    move_back_from_IL();
 void	pull_needle();
 
-void    decode_req_move_stepper(const char* msg);
+void    decode_coordinate(const char* msg);
 void    send_cmd(int cmd);
 void    status_msg(const char* msg);
 int     process_req(const char* in_cmd);
