@@ -25,10 +25,10 @@ from scipy.io import savemat
 import common
 
 USING_PI = os.uname()[4][:3] == 'arm'
-FORWARDING = False
 
 BORDER_SIZE = 10
 HALF_BORDER_SIZE = BORDER_SIZE/2
+FPS = 30
 
 if USING_PI:
     from pivideostream import PiVideoStream
@@ -70,7 +70,20 @@ else:
     GUI_IMAGE_SIZE_HEIGHT = 368  # 368
     SCALE_FACTOR = 2  # TODO: scale factor could be auto-calced..
 
-FAKE_INPUT_IMG = 1
+def set_forwarding_settings():
+    global CAMERA_RESOLUTION_WIDTH,CAMERA_RESOLUTION_HEIGHT, \
+    GUI_IMAGE_SIZE_WIDTH,GUI_IMAGE_SIZE_HEIGHT,CROPPING_ENABLED, \
+    CROPPED_RESOLUTION_WIDTH,CROPPED_RESOLUTION_HEIGHT,SCALE_FACTOR
+    CAMERA_RESOLUTION_WIDTH = 1000
+    CAMERA_RESOLUTION_HEIGHT = 1000
+    GUI_IMAGE_SIZE_WIDTH = CAMERA_RESOLUTION_WIDTH/2
+    GUI_IMAGE_SIZE_HEIGHT = CAMERA_RESOLUTION_HEIGHT/2
+    CROPPING_ENABLED = 0
+    CROPPED_RESOLUTION_WIDTH = 1000
+    CROPPED_RESOLUTION_HEIGHT = 1000
+    SCALE_FACTOR = 2
+
+FAKE_INPUT_IMG = 0
 if FAKE_INPUT_IMG:
     FAKE_INPUT_IMG_NAME = "./fake_images/fake1.jpg"
     CAMERA_RESOLUTION_WIDTH = 3280
@@ -83,11 +96,17 @@ if FAKE_INPUT_IMG:
     SCALE_FACTOR = 3
 
 
+
+
 def ui_main(fwd=False):
     """
     Initialize main UI
     :return: None
     """
+    global FORWARDING
+    FORWARDING = fwd
+    if fwd:
+        set_forwarding_settings()
     app = QApplication(sys.argv)
     if DARK_THEME:
         file = QFile("./assets/dark.qss")
@@ -96,9 +115,6 @@ def ui_main(fwd=False):
         app.setStyleSheet(stream.readAll())
     ui = MainWindow()
     sys.exit(app.exec_())
-
-    global FORWARDING
-    FORWARDING = fwd
 
 def _createCntrBtn(*args):
     l = QHBoxLayout()
@@ -230,6 +246,7 @@ class PreviewThread(QThread):
 
         if CROPPING_ENABLED:
             self.rawframe = common.cropND(self.rawframe, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
+
         #savemat('data.mat', {'frame': frame, 'framee': framee})
         #img = cv2.resize(self.rawframe, (GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT))
         img = QImage(numpy.asarray(self.rawframe, order='C'), self.rawframe.shape[1], self.rawframe.shape[0], QImage.Format_RGB888)
@@ -246,7 +263,8 @@ class PreviewThread(QThread):
     def run(self):
         while True:
             self.next_frame_slot()
-            self.msleep(200) # TODO: make this settable
+            time_slept = int((float(1)/FPS) / 1000)
+            self.msleep(time_slept) # TODO: make this settable
             qApp.processEvents()
 
 
@@ -370,7 +388,7 @@ class QInputBox(QLabel):
         QLabel.paintEvent(self, e)
         p = QPainter(self)
 
-        if self.start:
+        if self.started:
             p.drawPixmap(QPoint(HALF_BORDER_SIZE, HALF_BORDER_SIZE), self.img)
         #print(self.img.size())
 

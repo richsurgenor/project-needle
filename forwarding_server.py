@@ -14,14 +14,16 @@ import struct
 import threading
 from PIL import Image
 import numpy
+import cv2
 
 # Start a socket listening for connections on 0.0.0.0:8000
 
 class ForwardingCamera(threading.Thread):
     def __init__(self):
-        server_socket = socket.socket()
-        server_socket.bind(('0.0.0.0', 8000))
-        server_socket.listen(0)
+        threading.Thread.__init__(self)
+        self.server_socket = socket.socket()
+        self.server_socket.bind(('0.0.0.0', 8002))
+        self.server_socket.listen(0)
 
         self.frame = None
 
@@ -29,7 +31,9 @@ class ForwardingCamera(threading.Thread):
         # TODO: add auto-reconnecting..
 
         # Accept a single connection and make a file-like object out of it
+        print("Initializing ForwardingCamera Thread...")
         connection = self.server_socket.accept()[0].makefile('rb')
+        print("Connection estabilshed...") # TODO: pick up dropped connection...
         try:
             while True:
                 # Read the length of the image as a 32-bit unsigned int. If the
@@ -47,21 +51,26 @@ class ForwardingCamera(threading.Thread):
 
                 # TODO: change to pass numpy images back via frame
                 image = Image.open(image_stream)
-                print('Image is %dx%d' % image.size)
-                image.verify()
-                print('Image is verified')
-                self.frame = numpy.array(image)
+                #image.show()
+                #print('Image is %dx%d' % image.size)
+                #image.verify()
+                #print('Image is verified')
+
+                self.frame = image
         finally:
             connection.close()
             self.server_socket.close()
-
-    def start(self):
-        pass
 
     def stop(self):
         pass
 
     def get_frame(self):
-        return self.frame
+        if self.frame:
+            image = numpy.array(self.frame)
+            #note if png format is used then conversion is needed...
+            #image = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
+            return image
+        else:
+            return None
 
 
