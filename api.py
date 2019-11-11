@@ -67,7 +67,7 @@ class Processor(AbstractProcessor):
         return centers
 
     def get_final_selection(self, centers):
-        return iv.final_selection(centers)
+        return iv.final_selection(centers, True)
 
 
 def get_direction(current, target):
