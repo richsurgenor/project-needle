@@ -24,7 +24,7 @@ import time
 import scipy as sp
 import scipy.ndimage
 from matplotlib import pyplot as plt
-import spooky_lib as grid
+import justin_python.spooky_lib as grid
 
 
 def process_image(masked_img, threshold, time_enable):
