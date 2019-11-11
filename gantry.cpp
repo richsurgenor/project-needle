@@ -17,6 +17,7 @@
 Servo myservo;  // create servo object to control a servo
 
 static int x_coord, y_coord, z_coord = 0;
+static int z_depth = 0;
 static bool enable = 0;
 
 //String cmd = "";
@@ -32,6 +33,11 @@ static bool enable = 0;
 *Inputs:   No input
 /********************************************************************/
 void gantry_init(){
+	Serial.begin(115200);
+	pinMode(4, OUTPUT);
+	digitalWrite(4, HIGH);
+	delay(3000);
+	digitalWrite(4, LOW);
 	myservo.attach(A2);  // attaches the servo on pin A2 to the servo object
 	#if !HEADLESS
 	    status_msg("Initialized Gantry...");
@@ -69,6 +75,7 @@ int wait_for_coordinate(){
 	for(int i=0; i<8; i++){
 		value[i] = Serial.read();
 		Serial.write(value[i]);
+		Serial.println(value[i]);
 	}
 	Serial.println(""); // send eol
 	if (value[0] == CMD_WAIT_COORDINATE && value[4] == CMD_FINISH){
@@ -88,9 +95,11 @@ int wait_for_coordinate(){
 			value[n] -= 48; // put whatever 48 is in a gantry.hpp as a named constant.
 			value[n+4] -= 48;
 		}
+
 		x_coord = (value[1]*100)+(value[2]*10)+value[3];
 		y_coord = (value[5]*100)+(value[6]*10)+value[7];
-
+		Serial.println(x_coord);
+		Serial.println(y_coord);
 	}
 	else{ // this shouldnt be handled here... but by what is taking in the cmds..
 		Serial.write("Invalid packet");
@@ -198,13 +207,19 @@ void wait_for_error_check(){
 void inject_needle(){
 
 	int val;
-
-	val = analogRead(potpin);            // reads the value of the potentiometer (value between 0 and 1023)
-	val = map(val, 0, 1023, 3, 180);     // scale it to use it with the servo (value between 0 and 180)
+	//delay(3000);
+	val = myservo.read();            // reads the value of the potentiometer (value between 0 and 1023)
+	Serial.println("resetting");
+	Serial.println(val);
+	val = map(val, 0, 1023, 110, 180);     // scale it to use it with the servo (value between 0 and 180)
+	Serial.println(val);
 	myservo.write(val);                  // sets the servo position according to the scaled value
 	delay(3000);                           // waits for the servo to get there
-	val = analogRead(potpin);
-	val = map(val, 0, 1023, 50, 180);
+	Serial.println("pushing");
+	val = myservo.read();
+	Serial.println(val);
+	val = map(val, 0, 1023, 30, 180);
+	Serial.println(val);
 	myservo.write(val);
 
 }
@@ -212,11 +227,14 @@ void inject_needle(){
 void pull_needle(){
 
 	int val;
-
+	delay(3000);
 	val = analogRead(potpin);            // reads the value of the potentiometer (value between 0 and 1023)
-	val = map(val, 0, 1023, 3, 180);     // scale it to use it with the servo (value between 0 and 180)
+	Serial.println("pulling");
+	Serial.println(val);
+	val = map(val, 0, 1023, 110, 180);     // scale it to use it with the servo (value between 0 and 180)
+	Serial.println(val);
 	myservo.write(val);                  // sets the servo position according to the scaled value
-	delay(3000);                           // waits for the servo to get there
+	//delay(3000);                           // waits for the servo to get there
 
 }
 void move_back_from_IL(){	//this will probably only be used for my testing purposes
@@ -226,6 +244,7 @@ void move_back_from_IL(){	//this will probably only be used for my testing purpo
 
 	move_stepper(X_AXIS, x_dist_travelled, BACKWARD);
 	move_stepper(Y_AXIS, y_dist_travelled, BACKWARD);
+	move_stepper(Z_AXIS, z_depth, BACKWARD);
 
 }
 
@@ -298,15 +317,15 @@ void select_direction_pin(int dir){
 
 	if(dir == FORWARD){
 		digitalWrite(DIR_PIN_X,  HIGH);
-		digitalWrite(DIR_PIN_Y1, HIGH);
-		digitalWrite(DIR_PIN_Y2, HIGH);
+		digitalWrite(DIR_PIN_Y, HIGH);
+		//digitalWrite(DIR_PIN_Y, HIGH);
 		digitalWrite(DIR_PIN_Z,  HIGH);
 	}
 
 	if(dir == BACKWARD){
 		digitalWrite(DIR_PIN_X,  LOW);
-		digitalWrite(DIR_PIN_Y1, LOW);
-		digitalWrite(DIR_PIN_Y2, LOW);
+		digitalWrite(DIR_PIN_Y, LOW);
+		//digitalWrite(DIR_PIN_Y, LOW);
 		digitalWrite(DIR_PIN_Z,  LOW);
 	}
 }
@@ -325,7 +344,7 @@ int select_step_pin(int axis){
 		stepPin = STEP_PIN_X;
 	}
 	if(axis == Y_AXIS){
-		stepPin = STEP_PIN_Y1;
+		stepPin = STEP_PIN_Y;
 	}
 	if(axis == Z_AXIS){
 		stepPin = STEP_PIN_Z;
@@ -351,14 +370,16 @@ int move_stepper(int axis, int coordinate_mm, int dir){
      */
 	int i,
 		stepPin,
-		steps,
-		z_depth;
-
+		steps;
+		
 	steps = mm_to_steps(axis, coordinate_mm);
+	if(coordinate_mm == z_depth){
+		steps = z_depth;
+	}
 	select_direction_pin(dir);
 	stepPin = select_step_pin(axis);
 
-	if(axis = Z_AXIS  && dir == FORWARD){
+	if(axis == Z_AXIS  && dir == FORWARD){
 	    /*
          * Would like a status msg with the z depth found
          */
@@ -370,16 +391,17 @@ int move_stepper(int axis, int coordinate_mm, int dir){
 			return(1);
 		}
 		digitalWrite(stepPin, HIGH);
-		if(axis == Y_AXIS){
+		/*if(axis == Y_AXIS){
 			digitalWrite(STEP_PIN_Y2, HIGH);
-		}
+		}*/
 		delay(2);
 		digitalWrite(stepPin, LOW);
-		if(axis == Y_AXIS){
+		/*if(axis == Y_AXIS){
 			digitalWrite(STEP_PIN_Y2, LOW);
-		}
-		digitalWrite(STEP_PIN_Y2, LOW);
+		}*/
+		//digitalWrite(STEP_PIN_Y2, LOW);
 		delay(2);
+		Serial.println(i);
 	}
 	return(0);
 }
@@ -395,7 +417,6 @@ int depth_finder(){
 
 	int capSamples[10], debounceCap;
 	bool capOut;
-	int z_depth = 0;
 
 	capOut = digitalRead (CAP_SENSE_PIN);
 		while(capOut == 0){
@@ -406,10 +427,10 @@ int depth_finder(){
 			Serial.println(capOut);
 			#endif
 			digitalWrite(STEP_PIN_Z, HIGH);
-			delay(2);
+			delay(10);
 			z_depth++;
 			digitalWrite(STEP_PIN_Z, LOW);
-			delay(2);
+			delay(10);
 			}
 		}
 		for(int n = 0; n<10; n++){
@@ -493,6 +514,11 @@ int process_req(const char* msg) {
     //Serial.write(in_cmd);
 }
 
+void move_y_back(){
+
+	move_stepper(Y_AXIS, MM_TO_Y_HOME, BACKWARD);
+	
+}
 /**********************************
  * END HELPER FUNCTIONS
 ***********************************/
