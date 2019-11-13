@@ -8,20 +8,21 @@ This script requires that opencv-python, numpy, maplotlib, time and argparse
 be installed within the Python environment this script is run in.
 """
 
-import prostick_lib as iv
+import image_processing.prostick_lib as iv
 import cv2
 import numpy as np
 import time
-import visual
+import image_processing.visual as visual
 from matplotlib import pyplot as plt
 
 
 if __name__ == "__main__":
     # Read in the image
-    grid_horizontal, grid_vertical = iv.initialize_grids('coord_static_x_revised.png', 'coord_static_y.png')
-    img_in = cv2.imread('justin4.jpg', 0)
+    grid_horizontal, grid_vertical = iv.initialize_grids('assets/coord_static_x_revised.png', 'assets/coord_static_y.png')
+    img_in = cv2.imread('justin_python/justin4.jpg', 0)
     start = time.time()
-    selection, clusters = iv.selection(img_in, 40, grid_vertical)
+    clusters = iv.get_centers(img_in, 40, grid_vertical)
+    selection = iv.final_selection(clusters, np.shape(img_in))
     # Plot all steps of the vein enhancement process
     end = time.time()
     print(end-start)

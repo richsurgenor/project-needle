@@ -20,7 +20,9 @@ import api
 import time
 import os
 import forwarding_server
+import common
 from scipy.io import savemat
+from skimage import color
 
 import common
 
@@ -28,7 +30,7 @@ USING_PI = os.uname()[4][:3] == 'arm'
 
 BORDER_SIZE = 10
 HALF_BORDER_SIZE = BORDER_SIZE/2
-FPS = 30
+FPS = 10
 FINAL_SELECTION = 1 #temporary
 
 if USING_PI:
@@ -86,7 +88,7 @@ def set_forwarding_settings():
 
 FAKE_INPUT_IMG = 1
 if FAKE_INPUT_IMG:
-    FAKE_INPUT_IMG_NAME = "./justin_python/justin1.jpg"
+    FAKE_INPUT_IMG_NAME = "./justin_python/justin4.jpg"
     CAMERA_RESOLUTION_WIDTH = 3280
     CAMERA_RESOLUTION_HEIGHT = 2464
     GUI_IMAGE_SIZE_WIDTH = 820  # 640
@@ -124,11 +126,11 @@ def _createCntrBtn(*args):
     #l.addStretch()
     return l
 
-def get_processor(camera):
+def get_processor():
     if MOCK_MODE_IMAGE_PROCESSING:
-        return api.ProcessorMock(camera)
+        return api.ProcessorMock()
     else:
-        return api.Processor(camera)
+        return api.Processor()
 
 def get_controller():
     if MOCK_MODE_GANTRY:
@@ -284,11 +286,14 @@ class QProcessedImageGroupBox(QGroupBox):
         self.img = img
 
         self.image_label = QImageLabel("", img)
-        self.display_coords = QLabel("Coordinates")
+        self.display_coords = QLabel("Coordinates:")
+        self.display_correction_label = QLabel("Correction:")
         self.display_coords.setStyleSheet("font-weight: bold; color: red");
+        self.display_correction_label.setStyleSheet("font-weight: bold; color: red");
 
         self._layout.addWidget(self.image_label)
         self._layout.addWidget(self.display_coords)
+        self._layout.addWidget(self.display_correction_label)
 
         self.points = None
 
@@ -305,39 +310,32 @@ class QProcessedImageGroupBox(QGroupBox):
     def getPos(self, event):
         # TODO: Reverse scaling to get closet coordinates...
 
-        #if not isinstance(self.points, list) or not isinstance(self.points, numpy.ndarray):
-        #    print('User tried to click point before any existed.')
-        #    return
+        if isinstance(self.points, list) or common.is_numpy_array_avail(self.points):
+            print(type(self.points))
+            selected_x = event.pos().x() - HALF_BORDER_SIZE - 4
+            selected_y = event.pos().y() - HALF_BORDER_SIZE - 4
 
-        print(type(self.points))
-        selected_x = event.pos().x() - HALF_BORDER_SIZE - 4
-        selected_y = event.pos().y() - HALF_BORDER_SIZE - 4
+            best_x = 10000
+            best_y = 10000
+            chosen = -1
+            # check closest point
 
-        best_x = 10000
-        best_y = 10000
-        chosen = -1
-        # check closest point
+            for i in range(0, len(self.points)):
+                point = self.points[i]
+                x,y = point
 
-        for i in range(0, len(self.points)):
-            point = self.points[i]
-            x,y = point
-            # TODO: fix
-
-            #estimated center of the reticle..
-            #x += 8
-            #y += 8
-
-            diff_x = abs(selected_x - x)
-            diff_y = abs(selected_y - y)
-            diff_sum = diff_x + diff_y
-            if diff_sum < best_x+best_y:
-                best_x = diff_x
-                best_y = diff_y
-                print("diff_x: " + str(selected_x - x) + " diff_y: " + str(selected_y - y))
-                chosen = i
-        print("best_x: " + str(best_x) + " best_y: " + str(best_y))
-        self.display_coords.setText("Coordinates: x: " + str(selected_x) + " y: " + str(selected_y))
-        self.parent.draw_processed_img_with_pts(self.image_label.img, self.points, chosen)
+                diff_x = abs(selected_x - x)
+                diff_y = abs(selected_y - y)
+                diff_sum = diff_x + diff_y
+                if diff_sum < best_x+best_y:
+                    best_x = diff_x
+                    best_y = diff_y
+                    #print("diff_x: " + str(selected_x - x) + " diff_y: " + str(selected_y - y))
+                    chosen = i
+            #print("best_x: " + str(best_x) + " best_y: " + str(best_y))
+            self.parent.draw_processed_img_with_pts(self.image_label.img, self.points, chosen)
+        else:
+            print('User tried to click point before any existed.')
 
 
 class QImageLabel(QLabel):
@@ -368,6 +366,7 @@ class QImageLabel(QLabel):
     def sizeHint(self):
         return QSize(GUI_IMAGE_SIZE_WIDTH + BORDER_SIZE, GUI_IMAGE_SIZE_HEIGHT + BORDER_SIZE)
 
+
 class QInputBox(QLabel):
     def __init__(self, _, img):
         super(QLabel, self).__init__(_)
@@ -384,7 +383,6 @@ class QInputBox(QLabel):
     def set_status(self, status):
         pass
 
-    """"""
     def paintEvent(self, e):
         QLabel.paintEvent(self, e)
         p = QPainter(self)
@@ -424,7 +422,7 @@ class MainWindow(QMainWindow):
             self.camera.start()
 
 
-        self.processor = get_processor(self.camera)
+        self.processor = get_processor()
         self.wid = QWidget(self)
         self.setCentralWidget(self.wid)
         self.setWindowTitle('Project Needle')
@@ -510,6 +508,11 @@ class MainWindow(QMainWindow):
 
         self.show()
 
+    def display_coordinates(self, x, y):
+        self.output_box.display_coords.setText("Coordinates: x: " + str(x) + " y: " + str(y))
+
+    def display_correction(self, x, y):
+        self.output_box.display_correction_label.setText("Correction: x: " + str(x) + " away. y: " + str(y) + " down.")
 
     #class ProcessingThread(QThread): TODO: do we need this?
 
@@ -586,10 +589,10 @@ class MainWindow(QMainWindow):
         self.draw_output_img(processed_img_scaled)
         QCoreApplication.processEvents()
         self.processing_status.showMessage("Processing:   Applying thresholding...")
-        QThread.msleep(1000)
         if CROPPING_ENABLED:
             raw = common.cropND(raw, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
-        grayimg = cv2.cvtColor(raw, cv2.COLOR_RGB2GRAY)
+        #grayimg = cv2.imread("justin_python/justin4.jpg", 0)
+        grayimg = cv2.cvtColor(raw, cv2.COLOR_BGR2GRAY) # TODO: may need to be different per camera
         clahe_img = self.processor.apply_clahe(grayimg)
         # we gray now...
         height, width = clahe_img.shape
@@ -606,7 +609,7 @@ class MainWindow(QMainWindow):
         self.output_box.repaint()
         QCoreApplication.processEvents()
         self.processing_status.showMessage("Processing:   Applying mask...")
-        QThread.msleep(1000)
+        #QThread.msleep(1000)
         thresholding_img = self.processor.apply_thresholding(clahe_img)
         height, width = thresholding_img.shape
         bytes_per_line = width
@@ -616,7 +619,7 @@ class MainWindow(QMainWindow):
         self.draw_output_img(processed_img_scaled)
         self.processing_status.showMessage("Processing:   Calculating optimal points...")
         QCoreApplication.processEvents()
-        QThread.msleep(1000)
+        #QThread.msleep(1000)
         centers = self.processor.get_optimum_points(thresholding_img)
         #numpy.savetxt('test2.txt', centers, fmt='%d')
         points = numpy.copy(centers)
@@ -637,16 +640,18 @@ class MainWindow(QMainWindow):
         self.processing_status.showMessage("Processing:   Searching for final selection...")
         if FINAL_SELECTION:
             QCoreApplication.processEvents()
-            QThread.msleep(2000)
-            final_selection = self.processor.get_final_selection(centers)
+            #QThread.msleep(2000)
+            final_selection = self.processor.get_final_selection(numpy.shape(raw), centers)
+            self.display_coordinates(centers[final_selection][0],centers[final_selection][1])
             self.draw_processed_img_with_pts(processed_img_scaled, points, final_selection)
             self.processing_status.showMessage("Processing:   Final selection complete...")
-            self.gc.coordinate = centers[final_selection] # TODO: make this in mm
+            self.gc.coordinate = self.processor.get_correction_relative_to_point()
+            self.display_correction(self.gc.coordinate[0], self.gc.coordinate[1])
+            QCoreApplication.processEvents()
 
     def gantry_start_event(self):
         self.gantry_status.showMessage("Starting Gantry...")
         self.gc.send_msg(api.REQ_GO_TO_WORK)
-
 
     def reset_event(self):
         self.gc.send_msg(api.REQ_RESET)

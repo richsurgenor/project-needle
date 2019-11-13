@@ -6,7 +6,7 @@ import threading
 from serial import Serial
 import os
 
-import justin_python.prostick_lib as iv
+import image_processing.prostick_lib as iv
 from sklearn.cluster import KMeans
 import numpy as np
 from common import is_numpy_array_avail
@@ -14,9 +14,6 @@ from common import is_numpy_array_avail
 USING_PI = os.uname()[4][:3] == 'arm'
 
 class AbstractProcessor:
-
-    def __init__(self, camera):
-        self.camera = camera
 
     @abstractmethod
     def process_image(self, image):
@@ -33,17 +30,18 @@ class ProcessorMock(AbstractProcessor):
         print("fake image!")
         return image, [(320*3,120*3), (481*3, 233*3), (179*3, 211*3)]#[(100,100), (100, 200), (200, 250)]
 
-    """
-    TODO: Provide some exceptions for the image processor to raise for situations like:
-    1. not finding any ideal points
-    2. low quality image detected
-    """
-
 
 class Processor(AbstractProcessor):
 
+    def __init__(self):
+        self.img_in = None
+        self.grid_horizontal, self.grid_vertical = iv.initialize_grids('assets/coord_static_x_revised.png',
+                                                                       'assets/coord_static_y.png')
+        self.selection = None
+
     def apply_clahe(self, image):
-        return iv.apply_clahe(image, 5.0, (8, 8))
+        self.img_in = image
+        return iv.apply_clahe(self.img_in, 5.0, (8, 8))
 
     def apply_thresholding(self, clahe_img):
         """
@@ -51,24 +49,25 @@ class Processor(AbstractProcessor):
         :param image: input image
         :return: preprocessed image
         """
-        mask = iv.create_mask(clahe_img, 100, 255)
+        mask = iv.create_mask(self.img_in, 100, 255)
         threshold = int(255 * 0.5)
         adapt_mean_th = iv.adapt_thresh(clahe_img, 255, threshold, 20)
         masked = iv.apply_mask(adapt_mean_th, mask)
-        masked = masked.astype(np.uint8) # ??? numpy.where changes the dtype..
+        masked = masked.astype(np.uint8)
         return masked
 
-    def get_optimum_points(self, image):
-        pic_array_1, pic_array_2 = iv.process_image(image, 0.5, True)
-        # Run the K-Means algorithm to get 50 centers
-        nclusters = 50
-        centers_first = iv.execute_kmean(pic_array_1, int(nclusters / 2))
-        centers_second = iv.execute_kmean(pic_array_2, int(nclusters / 2))
-        centers = np.concatenate((centers_first, centers_second), axis=0)
-        return centers
+    def get_optimum_points(self, preprocessed_img):
+        self.centers = iv.get_centers(preprocessed_img, 40, self.grid_vertical, True)
+        return self.centers
 
-    def get_final_selection(self, centers):
-        return iv.final_selection(centers, True)
+    def get_final_selection(self, size, centers):
+        self.selection = iv.final_selection(centers, size, True)
+        return self.selection
+
+    def get_correction_relative_to_point(self):
+        needle_xy_pixel = iv.isolate_needle(self.img_in, self.grid_vertical)
+        pt = iv.compare_points(self.centers[self.selection], needle_xy_pixel, self.grid_horizontal, self.grid_vertical)
+        return pt
 
 
 def get_direction(current, target):
@@ -302,7 +301,7 @@ class GantryController(AbstractGantryController):
                 elif cmd == CMD_WAIT_COORDINATE:
                     print("Received request for coordinate...");
                     self.coordinate_request = True
-                    if is_numpy_array_avail(self.coordinate):
+                    if self.coordinate:
                         self.send_coordinate(self.coordinate[0], self.coordinate[1])
                         print("Send coordinate to gantry. x: {} y: {}".format(self.coordinate[0], self.coordinate[1]))
                     else:

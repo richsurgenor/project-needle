@@ -20,26 +20,26 @@ import numpy as np
 import cv2
 import scipy as sp
 import scipy.ndimage
-import spooky_lib as grid
+import image_processing.spooky_lib as grid
 from matplotlib import pyplot as plt
 
 
-def selection(image, nclusters, grid_horizontal):
+def get_centers(image, nclusters, grid, preprocessed=False):
     """
     :param image: image taken by the Raspberry Pi camera
     :param nclusters: number of clusters to run the algorithm with; make sure this is divisible by 2
-    :return: a potential injection site and the kmean clusters (for plotting purposes)
+    :param grid: grid img
+    :return: kmean clusters (for plotting purposes)
     """
-    image_size = np.shape(image)
-    mask_grid = grid_mask(grid_horizontal)
-    pic_array_1, pic_array_2 = process_selection_image(image, 0.5, mask_grid)
+    mask_grid = grid_mask(grid)
+    pic_array_1, pic_array_2 = process_selection_image(image, 0.5, mask_grid, preprocessed)
     centers_first = execute_kmean(pic_array_1, int(nclusters/2))
     centers_second = execute_kmean(pic_array_2, int(nclusters/2))
     centers = np.concatenate((centers_first, centers_second), axis=0)
-    return final_selection(centers, image_size), centers
+    return centers
 
 
-def process_selection_image(img_in, threshold, mask_grid):
+def process_selection_image(img_in, threshold, mask_grid, preprocessed=False):
     """
     :param img_in: image taken by the Raspberry Pi camera
     :param threshold: 0 to 1 analog value, selected threshold for the adaptive thresholding step; this function will be
@@ -54,11 +54,14 @@ def process_selection_image(img_in, threshold, mask_grid):
     4) Apply the mask to the image created by (3)
     5) Extract the remaining points and return a 2xN numpy array
     """
-    clahe_img = apply_clahe(img_in, 5.0, (8, 8))
-    mask = create_mask(img_in, 100, 255)
-    threshold = int(255*threshold)
-    adapt_mean_th = adapt_thresh(clahe_img, 255, threshold, 20)
-    masked_img = apply_mask(adapt_mean_th, mask)
+    if not preprocessed:
+        clahe_img = apply_clahe(img_in, 5.0, (8, 8))
+        mask = create_mask(img_in, 100, 255)
+        threshold = int(255*threshold)
+        adapt_mean_th = adapt_thresh(clahe_img, 255, threshold, 20)
+        masked_img = apply_mask(adapt_mean_th, mask)
+    else:
+        masked_img = img_in
     # for some reason this bit level logic on the images was really hard for me to do...
     masked_img = (np.logical_and(mask_grid, masked_img)) + np.logical_not(mask_grid)
     horizontal_v1 = create_strips(masked_img)
@@ -70,7 +73,7 @@ def process_selection_image(img_in, threshold, mask_grid):
     return np.array(pic_array1), np.array(pic_array2)
 
 
-def final_selection(centers, size):
+def final_selection(centers, size, index=False):
     """
     :param centers: kmean dataset
     :param size: size of image array to proportion our box friend correctly
@@ -82,9 +85,10 @@ def final_selection(centers, size):
     variances. Also using a function sort_and_compare where we compare the relative y distances from point to point.
     The lower the relative distance from point to point, the better.
     """
-    final_selection = [0, 0]
+    final_selection = None
     hold = [0, 1000, 1000, 1000]
-    for each in centers:
+    for i in range(0, len(centers)):
+        each = centers[i]
         # original box_friend dimensions were 60x300 for a 3280, 2464 array
         # so the ratio is x/3280 and y/2464
         box_friend = [60*size[0]/3280, 300*size[1]/2464]  # dimensions of box to check with
@@ -96,7 +100,10 @@ def final_selection(centers, size):
         """
         if standev < hold[1] and npoints > 2:
             hold = [npoints, standev, avgdist, maxdist]
-            final_selection = each
+            if index:
+                final_selection = i
+            else:
+                final_selection = each
 
     return final_selection
 
@@ -332,7 +339,7 @@ def grid_mask(grid_vertical):
     #  the x size and divide it by 2 and multiply by 0.222 and +/- that on both ends
     #  (Did I forget to mention that these gantry rails are the bane of my existence?
     enable_gantry_rails = True
-    if enable_gantry_rails > 0.5:  # in case Rich comes thru and crops the entire image
+    if enable_gantry_rails:  # in case Rich comes thru and crops the entire image ( ͡° ͜ʖ ͡°)
         min_x = min_x + 100
         max_x = max_x - 100
     gantry_mask = np.ones((sizey, sizex))
@@ -353,6 +360,23 @@ def execute_kmean(dataset, nclusters):
     kmeans = MiniBatchKMeans(n_clusters=nclusters, random_state=0).fit(dataset)  # default is Kmeans++ so this function auto does that for us
     return kmeans.cluster_centers_
 
+def initialize_horizontal_grid(file_horizontal):
+    """
+    :param file_horizontal: address of file containing horizontal grid information
+    :return: grid_horizontal array
+    """
+    grid_horizontal = cv2.imread(file_horizontal, 0)
+    grid_horizontal = grid.process_grid(grid_horizontal, 0.6)
+    return grid_horizontal
+
+def initialize_vertical_grid(file_vertical):
+    """
+    :param file_vertical: address of file containing vertical grid information
+    :return: grid_vertical array
+    """
+    grid_vertical = cv2.imread(file_vertical, 0)
+    grid_vertical = grid.process_grid(grid_vertical, 0.6)
+    return grid_vertical
 
 def initialize_grids(file_horizontal, file_vertical):
     """
@@ -360,11 +384,7 @@ def initialize_grids(file_horizontal, file_vertical):
     :param file_vertical: address of file containing vertical grid information
     :return: two grid arrays, grid_vertical and grid_horizontal
     """
-    grid_horizontal = cv2.imread(file_horizontal, 0)
-    grid_vertical = cv2.imread(file_vertical, 0)
-    grid_horizontal = grid.process_grid(grid_horizontal, 0.6)
-    grid_vertical = grid.process_grid(grid_vertical, 0.6)
-    return grid_vertical, grid_horizontal
+    return initialize_vertical_grid(file_vertical), initialize_horizontal_grid(file_horizontal)
 
 
 def compare_points(iv_site, needle, grid_horizontal, grid_vertical):
@@ -478,9 +498,9 @@ def process_needle_image(img_in, mask_grid):
     adapt_mean_th = adapt_thresh(clahe_img, 255, threshold, 97)
     adapt_mean_th = np.logical_or(adapt_mean_th, adapt_mean_th)
     image = (np.logical_and(mask_grid, adapt_mean_th)) + np.logical_not(mask_grid)
-    plt.plot
-    plt.imshow(image)
-    plt.show()
+    #plt.plot
+    #plt.imshow(image)
+    #plt.show()
     return np.where(image == 0)
 
 

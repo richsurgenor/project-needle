@@ -8,7 +8,7 @@
 
 """
 
-import prostick_lib as iv
+import image_processing.prostick_lib as iv
 import cv2
 import numpy as np
 
