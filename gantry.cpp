@@ -1,13 +1,13 @@
 //*********************************************************
-//	gantry.cpp					  *
-//	Jackson Solley				          *		
-//	10/31/2019					  *
-//	Summary:  				          *
-//	Source file with all of the functions required to *
-//	tell the gantry how/where to move the needle.	  *
-//	Need to fiugre out a way for Arduino to receive   *
-//	various commands from Pi without polling.         *
-//							  *
+//	gantry.cpp					                          *
+//	Jackson Solley				                          *		
+//	10/31/2019					                          *
+//	Summary:  				                              *
+//	Source file with all of the functions required to     *
+//	tell the gantry how/where to move the needle.	      *
+//	Need to fiugre out a way for Arduino to receive       *
+//	various commands from Pi without polling.             *
+//							                              *
 //*********************************************************
 
 
@@ -17,7 +17,7 @@
 Servo myservo;  // create servo object to control a servo
 
 static int x_coord, y_coord, z_coord = 0;
-static int z_depth = 0;
+static int z_depth = 0, z_found = 0;
 static bool enable = 0;
 
 //String cmd = "";
@@ -78,7 +78,7 @@ int wait_for_coordinate(){
 		Serial.println(value[i]);
 	}
 	Serial.println(""); // send eol
-	if (value[0] == CMD_WAIT_COORDINATE && value[4] == CMD_WAIT_COORDINATE_FINISH){
+	if (value[0] == CMD_WAIT_COORDINATE && value[4] == CMD_FINISH){
          /* Concerns
           * If value[0] is not the start of this packet.. but value[1+n] happens to be..
           * in reality we will be waiting to read in cmds and flushing the buffer definitely shouldnt happen
@@ -91,8 +91,8 @@ int wait_for_coordinate(){
           * moving the needle...
           */
 
-		for(int n = 1; n<4; n++){
-			value[n] -= 48; // offset in ascii
+		for(int n = 1; n<4; n++){ // what is the purpose of this? offsetting the mm given?
+			value[n] -= 48; // put whatever 48 is in a gantry.hpp as a named constant.
 			value[n+4] -= 48;
 		}
 
@@ -142,6 +142,7 @@ void position_needle(){
 	move_stepper(Z_AXIS, NEEDLE_Z_PROJ, BACKWARD);
 	move_stepper(Y_AXIS, NEEDLE_Y_PROJ, BACKWARD);
 	move_stepper(X_AXIS, NEEDLE_X_PROJ, FORWARD);
+	move_stepper(Z_AXIS, Z_REALIGN, FORWARD);
 
 }
 
@@ -241,10 +242,11 @@ void move_back_from_IL(){	//this will probably only be used for my testing purpo
 
 	int y_dist_travelled = ( MM_TO_Y_HOME + y_coord ) - NEEDLE_Y_PROJ;
 	int x_dist_travelled = x_coord + NEEDLE_X_PROJ;
+	
 
+	move_stepper(Z_AXIS, z_depth, BACKWARD);			//this is not correct to make z go back home need to account for realignment
 	move_stepper(X_AXIS, x_dist_travelled, BACKWARD);
 	move_stepper(Y_AXIS, y_dist_travelled, BACKWARD);
-	move_stepper(Z_AXIS, z_depth, BACKWARD);
 
 }
 
@@ -379,7 +381,7 @@ int move_stepper(int axis, int coordinate_mm, int dir){
 	select_direction_pin(dir);
 	stepPin = select_step_pin(axis);
 
-	if(axis == Z_AXIS  && dir == FORWARD){
+	if(axis == Z_AXIS  && dir == FORWARD  && z_found == 0){
 	    /*
          * Would like a status msg with the z depth found
          */
@@ -439,6 +441,7 @@ int depth_finder(){
 			Serial.println("abort");
 		}
 		if(debounceCap > 7){
+			z_found = 1;
 			return(z_depth);
 		}
 	return(0);
@@ -454,29 +457,11 @@ void status_msg(const char* msg) {
     Serial.println(msg);
 }
 
-void decode_coordinate(const char* msg) {
-    // For now we will say xxxx xxxx where each group of x is the x then y
-    if (strlen(msg) != 9) {
-        char output[50];
-        sprintf(output, "Invalid coordinate. You passed size: %d", strlen(msg));
-        status_msg(output);
-        return;
-    }
-    char x[5];
-    char y[5];
+void decode_req_move_stepper(const char* msg) {
+    // Get an array of 2 ints for x then y respectively
+    int axes[2];
 
-    memcpy( x, msg, 4 ); // read first 4 chars
-    x[4] = '\0';
-    memcpy( y, msg+4, 4 ); // read last 4 chars
-    y[4] = '\0';
-
-    int result[2];
-    result[0] = atoi(x);
-    result[1] = atoi(y);
-
-    char output[50];
-    sprintf(output, "x: %d y: %d\n", result[0], result[1]);
-    status_msg(output);
+    //decode msg
 }
 
 /********************************************************************
@@ -503,8 +488,7 @@ int process_req(const char* msg) {
             break;
         case REQ_MOVE_STEPPER:
             status_msg("Moving stepper...");
-            decode_coordinate(msg+1);
-            status_msg(msg);
+            decode_req_move_stepper(msg+1);
             //move_stepper()
             // TODO: splice string from msg
             break;
