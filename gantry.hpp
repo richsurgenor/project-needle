@@ -5,9 +5,10 @@
 #define SCREW_LEAD_Z	8
 #define STEPS_PER_REVOLUTION	200
 #define MM_TO_Y_HOME	120  //was 151
-#define NEEDLE_Z_PROJ	1
-#define	NEEDLE_Y_PROJ	9.22
-#define NEEDLE_X_PROJ	21.5
+#define NEEDLE_Z_PROJ	3
+#define Z_REALIGN	5.5
+#define	NEEDLE_Y_PROJ	12
+#define NEEDLE_X_PROJ	20.5
 #define SERVO_BEGIN		0
 #define SERVO_INJECT_DIST 100
 #define X_AXIS	0
@@ -46,7 +47,7 @@
 #define CMD_GANTRY_INITIALIZED (int) '1'
 #define CMD_POSITION_UPDATE (int) '2'
 #define CMD_WAIT_COORDINATE (int) '8'
-#define CMD_WAIT_COORDINATE_FINISH (int) '9'
+#define CMD_FINISH (int) '9'
 
 /*extern volatile int x_coord;
 extern volatile int y_coord;
@@ -70,6 +71,7 @@ void    move_back_from_IL();
 void	pull_needle();
 
 void    decode_coordinate(const char* msg);
+void    decode_req_move_stepper(const char* msg);
 void    send_cmd(int cmd);
 void    status_msg(const char* msg);
 int     process_req(const char* in_cmd);
