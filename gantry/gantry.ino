@@ -37,7 +37,6 @@ void(* resetFunc) (void) = 0;
 
 void loop() {
   #if !HEADLESS
-  //Serial.println("hi");
   if (stringComplete) {
     //Serial.print(inputString);
     int result = process_req(inputString.c_str());

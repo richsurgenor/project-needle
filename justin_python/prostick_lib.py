@@ -24,7 +24,7 @@ import time
 import scipy as sp
 import scipy.ndimage
 from matplotlib import pyplot as plt
-import spooky_lib as grid
+import justin_python.spooky_lib as grid
 
 
 def process_image(masked_img, threshold, time_enable):
@@ -53,7 +53,7 @@ def process_image(masked_img, threshold, time_enable):
     return np.array(pic_array1), np.array(pic_array2)
 
 
-def final_selection(centers):
+def final_selection(centers, index=False):
     """
     :param centers: kmean dataset
     :return: final [x, y] coordinate set for the injection site
@@ -63,9 +63,10 @@ def final_selection(centers):
     variances. Also using a function sort_and_compare where we compare the relative y distances from point to point.
     The lower the relative distance from point to point, the better.
     """
-    final_selection = [0, 0]
+    final_selection = None
     hold = [0, 1000, 1000, 1000]
-    for each in centers:
+    for i in range(0, len(centers)):
+        each = centers[i]
         box_friend = [60, 300]  # dimensions of box to check with
         [npoints, standev, avgdist, maxdist] = check_box(each, centers, box_friend[0], box_friend[1])
         """
@@ -75,7 +76,10 @@ def final_selection(centers):
         """
         if standev < hold[1] and npoints > 2:
             hold = [npoints, standev, avgdist, maxdist]
-            final_selection = each
+            if index:
+                final_selection = i
+            else:
+                final_selection = each
 
     return final_selection
 

@@ -25,10 +25,11 @@ from scipy.io import savemat
 import common
 
 USING_PI = os.uname()[4][:3] == 'arm'
-FORWARDING = False
 
 BORDER_SIZE = 10
 HALF_BORDER_SIZE = BORDER_SIZE/2
+FPS = 30
+FINAL_SELECTION = 1 #temporary
 
 if USING_PI:
     from pivideostream import PiVideoStream
@@ -38,7 +39,7 @@ if USING_PI:
 
     GANTRY_ON = 1                    # Control Gantry on/off for normal/mock modes
     MOCK_MODE_IMAGE_PROCESSING = 0   # Fake image processing but still run everything else
-    MOCK_MODE_GANTRY = 0             # Fake Gantry connection but still run everything else
+    MOCK_MODE_GANTRY = 1             # Fake Gantry connection but still run everything else
 
     CAMERA_RESOLUTION_WIDTH = 1920
     CAMERA_RESOLUTION_HEIGHT = 1080
@@ -70,9 +71,22 @@ else:
     GUI_IMAGE_SIZE_HEIGHT = 368  # 368
     SCALE_FACTOR = 2  # TODO: scale factor could be auto-calced..
 
+def set_forwarding_settings():
+    global CAMERA_RESOLUTION_WIDTH,CAMERA_RESOLUTION_HEIGHT, \
+    GUI_IMAGE_SIZE_WIDTH,GUI_IMAGE_SIZE_HEIGHT,CROPPING_ENABLED, \
+    CROPPED_RESOLUTION_WIDTH,CROPPED_RESOLUTION_HEIGHT,SCALE_FACTOR
+    CAMERA_RESOLUTION_WIDTH = 1000
+    CAMERA_RESOLUTION_HEIGHT = 1000
+    GUI_IMAGE_SIZE_WIDTH = CAMERA_RESOLUTION_WIDTH/2
+    GUI_IMAGE_SIZE_HEIGHT = CAMERA_RESOLUTION_HEIGHT/2
+    CROPPING_ENABLED = 0
+    CROPPED_RESOLUTION_WIDTH = 1000
+    CROPPED_RESOLUTION_HEIGHT = 1000
+    SCALE_FACTOR = 2
+
 FAKE_INPUT_IMG = 1
 if FAKE_INPUT_IMG:
-    FAKE_INPUT_IMG_NAME = "./fake_images/fake1.jpg"
+    FAKE_INPUT_IMG_NAME = "./justin_python/justin1.jpg"
     CAMERA_RESOLUTION_WIDTH = 3280
     CAMERA_RESOLUTION_HEIGHT = 2464
     GUI_IMAGE_SIZE_WIDTH = 820  # 640
@@ -82,12 +96,15 @@ if FAKE_INPUT_IMG:
     CROPPED_RESOLUTION_HEIGHT = 720
     SCALE_FACTOR = 3
 
-
 def ui_main(fwd=False):
     """
     Initialize main UI
     :return: None
     """
+    global FORWARDING
+    FORWARDING = fwd
+    if fwd:
+        set_forwarding_settings()
     app = QApplication(sys.argv)
     if DARK_THEME:
         file = QFile("./assets/dark.qss")
@@ -97,15 +114,14 @@ def ui_main(fwd=False):
     ui = MainWindow()
     sys.exit(app.exec_())
 
-    global FORWARDING
-    FORWARDING = fwd
-
 def _createCntrBtn(*args):
     l = QHBoxLayout()
     for arg in args:
-        l.addStretch()
+        l.setSpacing(30)
+        l.setAlignment(arg, Qt.AlignCenter)
+        #l.addStretch()
         l.addWidget(arg)
-    l.addStretch()
+    #l.addStretch()
     return l
 
 def get_processor(camera):
@@ -176,9 +192,10 @@ class StatusThread(QThread):
     Thread maintaining status assets, because if main thread is halted qt will be nonoperational.
     """
 
-    def __init__(self, status):
+    def __init__(self, gantry_status, processing_status):
         super().__init__()
-        self.status = status
+        self.gantry_status = gantry_status
+        self.processing_status = processing_status
         if GANTRY_ON:
             self.gc = api.GantryController(MOCK_MODE_GANTRY)
             self.gc.start()
@@ -188,7 +205,7 @@ class StatusThread(QThread):
     def run(self):
         while True:
             if self.gc:
-                self.status.showMessage(self.gc.msg)
+                self.gantry_status.showMessage("Gantry:   " + self.gc.msg)
                 self.msleep(1000)
 
         """
@@ -230,6 +247,7 @@ class PreviewThread(QThread):
 
         if CROPPING_ENABLED:
             self.rawframe = common.cropND(self.rawframe, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
+
         #savemat('data.mat', {'frame': frame, 'framee': framee})
         #img = cv2.resize(self.rawframe, (GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT))
         img = QImage(numpy.asarray(self.rawframe, order='C'), self.rawframe.shape[1], self.rawframe.shape[0], QImage.Format_RGB888)
@@ -246,7 +264,8 @@ class PreviewThread(QThread):
     def run(self):
         while True:
             self.next_frame_slot()
-            self.msleep(200) # TODO: make this settable
+            time_slept = int((float(1)/FPS) * 1000)
+            self.msleep(time_slept) # TODO: make this settable
             qApp.processEvents()
 
 
@@ -370,7 +389,7 @@ class QInputBox(QLabel):
         QLabel.paintEvent(self, e)
         p = QPainter(self)
 
-        if self.start:
+        if self.started:
             p.drawPixmap(QPoint(HALF_BORDER_SIZE, HALF_BORDER_SIZE), self.img)
         #print(self.img.size())
 
@@ -413,8 +432,10 @@ class MainWindow(QMainWindow):
         self._layout.setSpacing(0)
         self.wid.setLayout(self._layout)
 
-        self.status = QStatusBar()
-        self._layout.addWidget(self.status)
+        self.gantry_status = QStatusBar()
+        self._layout.addWidget(self.gantry_status)
+        self.processing_status = QStatusBar()
+        self._layout.addWidget(self.processing_status)
 
         self.checkbox_widget = QWidget()
         self.checkboxes_layout = QHBoxLayout()
@@ -434,7 +455,7 @@ class MainWindow(QMainWindow):
         #self._layout.addWidget(self.centralWidget)
         self.pic_widget = QImageBox("Image View")
         self.pics_hbox = QHBoxLayout(self.pic_widget)
-        self.pics_hbox.setAlignment(Qt.AlignHCenter);
+        self.pics_hbox.setAlignment(Qt.AlignHCenter)
         self.pics_hbox.setSpacing(10)
         self.pic_widget.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
 
@@ -452,8 +473,9 @@ class MainWindow(QMainWindow):
         self.feed.start()
 
         # Init thread that manages Gantry...
-        self.status_thread = StatusThread(self.status)
+        self.status_thread = StatusThread(self.gantry_status, self.processing_status)
         self.status_thread.start()
+        self.gc = self.status_thread.gc
 
         self.output_box = QProcessedImageGroupBox(self, "Processed Image", None)
         self.pics_hbox.addWidget(self.output_box)
@@ -462,27 +484,27 @@ class MainWindow(QMainWindow):
         # buttons
         btn_process_img = QPushButton("Capture Image")
         btn_process_img.clicked.connect(self.process_image_event)
+        btn_gantry_start = QPushButton("Start Gantry")
+        btn_gantry_start.clicked.connect(self.gantry_start_event)
         btn_reset = QPushButton("Reset")
         btn_reset.clicked.connect(self.reset_event)
         btn_calibrate = QPushButton("Calibrate")
         btn_calibrate.clicked.connect(self.calibrate_event)
         btn_close = QPushButton("Close")
         btn_close.clicked.connect(self.close_event)
-
         btn_settings = QPushButton("Settings")
         btn_settings.clicked.connect(self.settings_event)
-
         btn_debug_cmds = QPushButton("Debug Cmds")
         btn_debug_cmds.clicked.connect(self.debug_cmds_event)
 
 
         self.btn_widget = QWidget()
-        btn_panel = _createCntrBtn(btn_process_img, btn_reset, btn_calibrate, btn_close)
+        btn_panel = _createCntrBtn(btn_debug_cmds, btn_settings, btn_reset, btn_calibrate, btn_close)
         self.btn_widget.setLayout(btn_panel)
         self._layout.addWidget(self.btn_widget)
 
         self.btn_widget2 = QWidget()
-        btn_panel2 = _createCntrBtn(btn_settings, btn_debug_cmds)
+        btn_panel2 = _createCntrBtn(btn_process_img, btn_gantry_start)
         self.btn_widget2.setLayout(btn_panel2)
         self._layout.addWidget(self.btn_widget2)
 
@@ -552,7 +574,7 @@ class MainWindow(QMainWindow):
         Receive processed image and use the received points to display a final image.
         :return: None
         """
-        
+
         #TODO: redo this whole function
         print("Processing...")
         raw = self.feed.rawframe
@@ -563,8 +585,8 @@ class MainWindow(QMainWindow):
         processed_img_scaled = processed_img.scaled(GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
         self.draw_output_img(processed_img_scaled)
         QCoreApplication.processEvents()
-        QThread.msleep(2000)
-
+        self.processing_status.showMessage("Processing:   Applying thresholding...")
+        QThread.msleep(1000)
         if CROPPING_ENABLED:
             raw = common.cropND(raw, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
         grayimg = cv2.cvtColor(raw, cv2.COLOR_RGB2GRAY)
@@ -583,7 +605,8 @@ class MainWindow(QMainWindow):
 
         self.output_box.repaint()
         QCoreApplication.processEvents()
-        QThread.msleep(2000)
+        self.processing_status.showMessage("Processing:   Applying mask...")
+        QThread.msleep(1000)
         thresholding_img = self.processor.apply_thresholding(clahe_img)
         height, width = thresholding_img.shape
         bytes_per_line = width
@@ -591,9 +614,9 @@ class MainWindow(QMainWindow):
         processed_img = QPixmap.fromImage(q_img)
         processed_img_scaled = processed_img.scaled(GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
         self.draw_output_img(processed_img_scaled)
-
+        self.processing_status.showMessage("Processing:   Calculating optimal points...")
         QCoreApplication.processEvents()
-        QThread.msleep(2000)
+        QThread.msleep(1000)
         centers = self.processor.get_optimum_points(thresholding_img)
         #numpy.savetxt('test2.txt', centers, fmt='%d')
         points = numpy.copy(centers)
@@ -609,11 +632,24 @@ class MainWindow(QMainWindow):
             point[0] = point[0] + HALF_BORDER_SIZE - 8
             point[1] = point[1] + HALF_BORDER_SIZE - 8
 
-        self.draw_processed_img_with_pts(processed_img_scaled, points, -1)
         self.output_box.points = points
+        self.draw_processed_img_with_pts(processed_img_scaled, points, -1)
+        self.processing_status.showMessage("Processing:   Searching for final selection...")
+        if FINAL_SELECTION:
+            QCoreApplication.processEvents()
+            QThread.msleep(2000)
+            final_selection = self.processor.get_final_selection(centers)
+            self.draw_processed_img_with_pts(processed_img_scaled, points, final_selection)
+            self.processing_status.showMessage("Processing:   Final selection complete...")
+            self.gc.coordinate = centers[final_selection] # TODO: make this in mm
+
+    def gantry_start_event(self):
+        self.gantry_status.showMessage("Starting Gantry...")
+        self.gc.send_msg(api.REQ_GO_TO_WORK)
+
 
     def reset_event(self):
-        self.status_thread.gc.send_msg(api.REQ_RESET)
+        self.gc.send_msg(api.REQ_RESET)
         self.status_thread.gc.stop()
         del self.status_thread.gc
         self.status_thread.gc = None
