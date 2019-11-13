@@ -522,6 +522,31 @@ void move_y_back(){
 	move_stepper(Y_AXIS, MM_TO_Y_HOME, BACKWARD);
 	
 }
+
+void decode_coordinate(const char* msg) {
+    // For now we will say xxxx xxxx where each group of x is the x then y
+    if (strlen(msg) != 9) {
+        char output[50];
+        sprintf(output, "Invalid coordinate. You passed size: %d", strlen(msg));
+        status_msg(output);
+        return;
+    }
+    char x[5];
+    char y[5];
+
+    memcpy( x, msg, 4 ); // read first 4 chars
+    x[4] = '\0';
+    memcpy( y, msg+4, 4 ); // read last 4 chars
+    y[4] = '\0';
+
+    int result[2];
+    result[0] = atoi(x);
+    result[1] = atoi(y);
+	
+	char output[50];
+    sprintf(output, "x: %d y: %d\n", result[0], result[1]);
+    status_msg(output);
+}
 /**********************************
  * END HELPER FUNCTIONS
 ***********************************/
