@@ -61,9 +61,9 @@ void move_y_home(){
 /********************************************************************
 *Function: wait_for_coordinate
 *Purpose:  Waits to receive a valid coordinate from the Pi in the
-		   format (8xxx9xxx) where xxx represents a 3 digit mm value
-		   and 8 and 9 being confirmation bytes to validate that this
-		   is a valid coordinate packet
+		   format (8xxxxxx) where xxx represents a 3 digit mm value
+		   and 8 being the command opcode to validate that this
+		   is a valid wait-for-coordinate packet
 *Returns:  0 (valid coordinate received)
 *		   1 (invalid coordinate packet)
 *Inputs:   no input
@@ -78,7 +78,7 @@ int wait_for_coordinate(){
 		Serial.println(value[i]);
 	}
 	Serial.println(""); // send eol
-	if (value[0] == CMD_WAIT_COORDINATE && value[4] == CMD_WAIT_COORDINATE_FINISH){
+	if (value[0] == CMD_WAIT_COORDINATE) { // && value[4] == CMD_WAIT_COORDINATE_FINISH){
          /* Concerns
           * If value[0] is not the start of this packet.. but value[1+n] happens to be..
           * in reality we will be waiting to read in cmds and flushing the buffer definitely shouldnt happen
@@ -474,9 +474,13 @@ void decode_coordinate(const char* msg) {
     result[0] = atoi(x);
     result[1] = atoi(y);
 
+    x_coord = result[0];
+    y_coord = result[1];
+
     char output[50];
     sprintf(output, "x: %d y: %d\n", result[0], result[1]);
     status_msg(output);
+
 }
 
 /********************************************************************
@@ -490,6 +494,7 @@ void decode_coordinate(const char* msg) {
 int process_req(const char* msg) {
     int cmd = int(msg[0]);
     int m;
+    int *coordinate_result;
     switch(cmd) {
         case REQ_ECHO_MSG:
             status_msg(msg+1); // pass ptr to msg+1 because first byte is cmd byte (this will just echo)
@@ -501,6 +506,9 @@ int process_req(const char* msg) {
 
             m = wait_for_coordinate();
             break;
+        case REQ_WAIT_COORDINATE:
+            decode_coordinate(msg+1);
+            //move_stepper
         case REQ_MOVE_STEPPER:
             status_msg("Moving stepper...");
             decode_coordinate(msg+1);

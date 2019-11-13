@@ -65,12 +65,12 @@ else:
     CAMERA_RESOLUTION_WIDTH = 1280
     CAMERA_RESOLUTION_HEIGHT = 720
 
-    CROPPING_ENABLED = 1
+    CROPPING_ENABLED = 0
     CROPPED_RESOLUTION_WIDTH = 1000
     CROPPED_RESOLUTION_HEIGHT = 720
 
-    GUI_IMAGE_SIZE_WIDTH = 500  # 640
-    GUI_IMAGE_SIZE_HEIGHT = 368  # 368
+    GUI_IMAGE_SIZE_WIDTH = 640
+    GUI_IMAGE_SIZE_HEIGHT = 360
     SCALE_FACTOR = 2  # TODO: scale factor could be auto-calced..
 
 def set_forwarding_settings():
@@ -91,12 +91,12 @@ if FAKE_INPUT_IMG:
     FAKE_INPUT_IMG_NAME = "./justin_python/justin4.jpg"
     CAMERA_RESOLUTION_WIDTH = 3280
     CAMERA_RESOLUTION_HEIGHT = 2464
-    GUI_IMAGE_SIZE_WIDTH = 820  # 640
+    GUI_IMAGE_SIZE_WIDTH = 820 #550  # 640
     GUI_IMAGE_SIZE_HEIGHT = 616  # 368
     CROPPING_ENABLED = 0
-    CROPPED_RESOLUTION_WIDTH = 1000
-    CROPPED_RESOLUTION_HEIGHT = 720
-    SCALE_FACTOR = 3
+    CROPPED_RESOLUTION_WIDTH = 2200
+    CROPPED_RESOLUTION_HEIGHT = 2464
+    SCALE_FACTOR = 4
 
 def ui_main(fwd=False):
     """
@@ -130,7 +130,10 @@ def get_processor():
     if MOCK_MODE_IMAGE_PROCESSING:
         return api.ProcessorMock()
     else:
-        return api.Processor()
+        if CROPPING_ENABLED:
+            return api.Processor(CROPPED_RESOLUTION_WIDTH, CROPPED_RESOLUTION_HEIGHT)
+        else:
+            return api.Processor(CAMERA_RESOLUTION_WIDTH, CAMERA_RESOLUTION_HEIGHT)
 
 def get_controller():
     if MOCK_MODE_GANTRY:
@@ -589,8 +592,8 @@ class MainWindow(QMainWindow):
         self.draw_output_img(processed_img_scaled)
         QCoreApplication.processEvents()
         self.processing_status.showMessage("Processing:   Applying thresholding...")
-        if CROPPING_ENABLED:
-            raw = common.cropND(raw, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
+        #if CROPPING_ENABLED:
+        #    raw = common.cropND(raw, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
         #grayimg = cv2.imread("justin_python/justin4.jpg", 0)
         grayimg = cv2.cvtColor(raw, cv2.COLOR_BGR2GRAY) # TODO: may need to be different per camera
         clahe_img = self.processor.apply_clahe(grayimg)
@@ -624,8 +627,12 @@ class MainWindow(QMainWindow):
         #numpy.savetxt('test2.txt', centers, fmt='%d')
         points = numpy.copy(centers)
 
-        scalex = float(CAMERA_RESOLUTION_WIDTH) / GUI_IMAGE_SIZE_WIDTH
-        scaley = float(CAMERA_RESOLUTION_HEIGHT) / GUI_IMAGE_SIZE_HEIGHT
+        if CROPPING_ENABLED:
+            scalex = float(CROPPED_RESOLUTION_WIDTH) / GUI_IMAGE_SIZE_WIDTH
+            scaley = float(CROPPED_RESOLUTION_HEIGHT) / GUI_IMAGE_SIZE_HEIGHT
+        else:
+            scalex = float(CAMERA_RESOLUTION_WIDTH) / GUI_IMAGE_SIZE_WIDTH
+            scaley = float(CAMERA_RESOLUTION_HEIGHT) / GUI_IMAGE_SIZE_HEIGHT
         #scalex = int(scalex)
         #scaley = int(scaley)
 
@@ -645,7 +652,9 @@ class MainWindow(QMainWindow):
             self.display_coordinates(centers[final_selection][0],centers[final_selection][1])
             self.draw_processed_img_with_pts(processed_img_scaled, points, final_selection)
             self.processing_status.showMessage("Processing:   Final selection complete...")
-            self.gc.coordinate = self.processor.get_correction_relative_to_point()
+            correction_in_mm = self.processor.get_correction_relative_to_point()
+            print("Coordinate in mm: x: {} y: {}".format(correction_in_mm[0], correction_in_mm[1]))
+            self.gc.coordinate = self.processor.get_correction_in_steps_relative_to_point(correction_in_mm)
             self.display_correction(self.gc.coordinate[0], self.gc.coordinate[1])
             QCoreApplication.processEvents()
 

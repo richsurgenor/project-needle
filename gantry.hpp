@@ -38,6 +38,7 @@
 #define REQ_MOVE_Y_HOME (int) '2'
 #define REQ_MOVE_STEPPER (int) '3'
 #define REQ_GO_TO_WORK (int) '4' // after pi gives coordinate pi tells to go ahead...
+#define REQ_WAIT_COORDINATE (int) '5'
 #define REQ_RESET (int) '9'
 
 // Commands to Pi

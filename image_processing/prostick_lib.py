@@ -24,14 +24,14 @@ import image_processing.spooky_lib as grid
 from matplotlib import pyplot as plt
 
 
-def get_centers(image, nclusters, grid, preprocessed=False):
+def get_centers(image, nclusters, grid, preprocessed=False, enable_gantry_rails=True):
     """
     :param image: image taken by the Raspberry Pi camera
     :param nclusters: number of clusters to run the algorithm with; make sure this is divisible by 2
     :param grid: grid img
     :return: kmean clusters (for plotting purposes)
     """
-    mask_grid = grid_mask(grid)
+    mask_grid = grid_mask(grid, enable_gantry_rails)
     pic_array_1, pic_array_2 = process_selection_image(image, 0.5, mask_grid, preprocessed)
     centers_first = execute_kmean(pic_array_1, int(nclusters/2))
     centers_second = execute_kmean(pic_array_2, int(nclusters/2))
@@ -321,7 +321,7 @@ def create_strips(image):
     return horizontal
 
 
-def grid_mask(grid_vertical):
+def grid_mask(grid_vertical, enable_gantry_rails=True):
     """
     :return: image with the gantry rails auto removed
 
@@ -338,7 +338,6 @@ def grid_mask(grid_vertical):
     #  Also I am adding logic here to ensure that the gantry rails are eliminated. Take
     #  the x size and divide it by 2 and multiply by 0.222 and +/- that on both ends
     #  (Did I forget to mention that these gantry rails are the bane of my existence?
-    enable_gantry_rails = True
     if enable_gantry_rails:  # in case Rich comes thru and crops the entire image ( ͡° ͜ʖ ͡°)
         min_x = min_x + 100
         max_x = max_x - 100
@@ -442,7 +441,7 @@ def check_needle(updated_image, injection_site):
     """
 
 
-def isolate_needle(updated_image, grid_vertical):
+def isolate_needle(updated_image, grid_vertical, enable_gantry_rails=True):
     """
     :param updated_image: image with the needle in view of the camera
     :return: position of the needle tip in pixel coordinates (we want to keep this in pixels because the grid
@@ -456,7 +455,7 @@ def isolate_needle(updated_image, grid_vertical):
     #  To isolate the needle in the image, let's use the same image processing for the veins but with a higher
     #  threshold value to remove the veins and any noise. If this is done properly (and like it was prototyped in
     #  MATLAB, we should have just a narrow black line remaining.
-    mask_grid = grid_mask(grid_vertical)
+    mask_grid = grid_mask(grid_vertical, enable_gantry_rails)
     image_points = process_needle_image(updated_image, mask_grid)
     #  With the isolated needle, extract the point at the lowest y position (average all the points x and y
     #  positions first just to make sure we are not pulling off noise (there's a high chance of that if we do not

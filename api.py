@@ -5,6 +5,7 @@ import time
 import threading
 from serial import Serial
 import os
+import cv2
 
 import image_processing.prostick_lib as iv
 from sklearn.cluster import KMeans
@@ -12,6 +13,14 @@ import numpy as np
 from common import is_numpy_array_avail
 
 USING_PI = os.uname()[4][:3] == 'arm'
+
+X_AXIS = 0
+Y_AXIS = 1
+Z_AXIS = 2
+SCREW_LEAD_X = 2
+SCREW_LEAD_Y = 8
+SCREW_LEAD_Z = 8
+STEPS_PER_REVOLUTION = 200
 
 class AbstractProcessor:
 
@@ -33,11 +42,16 @@ class ProcessorMock(AbstractProcessor):
 
 class Processor(AbstractProcessor):
 
-    def __init__(self):
+    def __init__(self, camera_width, camera_height):
         self.img_in = None
         self.grid_horizontal, self.grid_vertical = iv.initialize_grids('assets/coord_static_x_revised.png',
                                                                        'assets/coord_static_y.png')
+        self.grid_horizontal = cv2.resize(self.grid_horizontal, (camera_width, camera_height))
+        self.grid_vertical = cv2.resize(self.grid_vertical, (camera_width, camera_height))
         self.selection = None
+
+    #def update_grids(self, image):
+
 
     def apply_clahe(self, image):
         self.img_in = image
@@ -57,7 +71,7 @@ class Processor(AbstractProcessor):
         return masked
 
     def get_optimum_points(self, preprocessed_img):
-        self.centers = iv.get_centers(preprocessed_img, 40, self.grid_vertical, True)
+        self.centers = iv.get_centers(preprocessed_img, 40, self.grid_vertical, True, False)
         return self.centers
 
     def get_final_selection(self, size, centers):
@@ -68,6 +82,23 @@ class Processor(AbstractProcessor):
         needle_xy_pixel = iv.isolate_needle(self.img_in, self.grid_vertical)
         pt = iv.compare_points(self.centers[self.selection], needle_xy_pixel, self.grid_horizontal, self.grid_vertical)
         return pt
+
+    def mm_to_steps(self, axis, distance):
+
+        if axis == X_AXIS:
+            screw_lead_axis = SCREW_LEAD_X
+        elif axis == Y_AXIS:
+            screw_lead_axis = SCREW_LEAD_Y
+        elif axis == Z_AXIS:
+            screw_lead_axis = SCREW_LEAD_Z;
+
+        totalSteps = float(STEPS_PER_REVOLUTION) * (1 / float(screw_lead_axis) * (float(distance + 1)))
+        return int(round(totalSteps))
+
+    def get_correction_in_steps_relative_to_point(self, correction_in_mm):
+        x_steps = self.mm_to_steps(X_AXIS, correction_in_mm[0])
+        y_steps = self.mm_to_steps(Y_AXIS, correction_in_mm[1])
+        return [x_steps, y_steps]
 
 
 def get_direction(current, target):
