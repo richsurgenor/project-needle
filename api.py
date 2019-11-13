@@ -9,6 +9,7 @@ import os
 import justin_python.prostick_lib as iv
 from sklearn.cluster import KMeans
 import numpy as np
+from common import is_numpy_array_avail
 
 USING_PI = os.uname()[4][:3] == 'arm'
 
@@ -105,6 +106,12 @@ class GantryMock(threading.Thread):
                 pass
             elif req == REQ_MOVE_Y_HOME:
                 pass
+            elif req == REQ_GO_TO_WORK:
+                # Now that we are ready to go, gantry needs coordinate!
+                self.send_cmd(CMD_WAIT_COORDINATE)
+            elif req == REQ_WAIT_COORDINATE:
+                print(line)
+
             else:
                 print("Unknown command passed to mock gantry interface..")
 
@@ -163,6 +170,9 @@ class GantryMock(threading.Thread):
 
     def inWaiting(self):
         return self.pi_buffer.qsize()
+
+    def close(self):
+        print("Closing GantryMock!!")
 
 if USING_PI:
     SERIAL_INTERFACE = '/dev/ttyACM0'
@@ -241,6 +251,7 @@ REQ_POSITION_UPDATE = '1'
 REQ_MOVE_Y_HOME = '2'
 REQ_MOVE_STEPPER = '3'
 REQ_GO_TO_WORK = '4'
+REQ_WAIT_COORDINATE = '5'
 REQ_RESET = '9'
 
 # Commands to Pi
@@ -271,6 +282,7 @@ class GantryController(AbstractGantryController):
         print("connected to serial interface..")
 
         self.stopped = False
+        self.coordinate = None
 
     def run(self):
         print("started gantry controller thread...")
@@ -290,6 +302,11 @@ class GantryController(AbstractGantryController):
                 elif cmd == CMD_WAIT_COORDINATE:
                     print("Received request for coordinate...");
                     self.coordinate_request = True
+                    if is_numpy_array_avail(self.coordinate):
+                        self.send_coordinate(self.coordinate[0], self.coordinate[1])
+                        print("Send coordinate to gantry. x: {} y: {}".format(self.coordinate[0], self.coordinate[1]))
+                    else:
+                        print("Coordinate was requested but we had no coordinate ready...")
                 elif cmd == CMD_POSITION_UPDATE:
                     print("Received position update...")
 
@@ -311,7 +328,9 @@ class GantryController(AbstractGantryController):
 
     def send_coordinate(self, x, y):
         print("sending coordinate...")
-        self.gantry.write("hi".encode('ascii'))
+        x_str = str(int(round(x))).rjust(4, '0')
+        y_str = str(int(round(y))).rjust(4, '0')
+        self.send_msg(REQ_WAIT_COORDINATE, x_str + y_str)
         pass
 
     def send_msg(self, cmd, msg="", encode=True):
@@ -324,6 +343,17 @@ class GantryController(AbstractGantryController):
             msg = cmd_enc + msg
         self.gantry.write(msg)
 
+"""
+    def send_msg(self, req, msg='', encode=True):
+        #TODO: add cond encode
+        if len(msg) > 0:
+            mymsg = str(req) + msg
+            mymsg = mymsg.encode('ascii')
+            #mymsg = req + mymsg
+        else:
+            mymsg = str(req).encode('ascii')
+        self.gantry.write(mymsg)
+"""
 
 
 

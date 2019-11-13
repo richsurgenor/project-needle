@@ -2,6 +2,7 @@ import operator
 from math import sqrt
 from functools import reduce
 from statistics import median
+import numpy as np
 
 def cropND(img, bounding):
     start = tuple(map(lambda a, da: a//2-da//2, img.shape, bounding))
@@ -72,4 +73,10 @@ def divisors(n):
     divisors = list(set(divisors))
     divisors.sort()
     return divisors
+
+def is_numpy_array_avail(obj):
+    if isinstance(obj, np.ndarray):
+        return True
+    else:
+        return False
 

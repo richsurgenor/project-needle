@@ -39,7 +39,7 @@ if USING_PI:
 
     GANTRY_ON = 1                    # Control Gantry on/off for normal/mock modes
     MOCK_MODE_IMAGE_PROCESSING = 0   # Fake image processing but still run everything else
-    MOCK_MODE_GANTRY = 0             # Fake Gantry connection but still run everything else
+    MOCK_MODE_GANTRY = 1             # Fake Gantry connection but still run everything else
 
     CAMERA_RESOLUTION_WIDTH = 1920
     CAMERA_RESOLUTION_HEIGHT = 1080
@@ -84,7 +84,7 @@ def set_forwarding_settings():
     CROPPED_RESOLUTION_HEIGHT = 1000
     SCALE_FACTOR = 2
 
-FAKE_INPUT_IMG = 0
+FAKE_INPUT_IMG = 1
 if FAKE_INPUT_IMG:
     FAKE_INPUT_IMG_NAME = "./justin_python/justin1.jpg"
     CAMERA_RESOLUTION_WIDTH = 3280
@@ -475,6 +475,7 @@ class MainWindow(QMainWindow):
         # Init thread that manages Gantry...
         self.status_thread = StatusThread(self.gantry_status, self.processing_status)
         self.status_thread.start()
+        self.gc = self.status_thread.gc
 
         self.output_box = QProcessedImageGroupBox(self, "Processed Image", None)
         self.pics_hbox.addWidget(self.output_box)
@@ -640,12 +641,15 @@ class MainWindow(QMainWindow):
             final_selection = self.processor.get_final_selection(centers)
             self.draw_processed_img_with_pts(processed_img_scaled, points, final_selection)
             self.processing_status.showMessage("Processing:   Final selection complete...")
+            self.gc.coordinate = centers[final_selection] # TODO: make this in mm
 
     def gantry_start_event(self):
-        pass
+        self.gantry_status.showMessage("Starting Gantry...")
+        self.gc.send_msg(api.REQ_GO_TO_WORK)
+
 
     def reset_event(self):
-        self.status_thread.gc.send_msg(api.REQ_RESET)
+        self.gc.send_msg(api.REQ_RESET)
         self.status_thread.gc.stop()
         del self.status_thread.gc
         self.status_thread.gc = None
