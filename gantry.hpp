@@ -69,6 +69,7 @@ void 	move_y_back();
 void    move_back_from_IL();
 void	pull_needle();
 
+void    decode_coordinate(const char* msg);
 void    decode_req_move_stepper(const char* msg);
 void    send_cmd(int cmd);
 void    status_msg(const char* msg);
