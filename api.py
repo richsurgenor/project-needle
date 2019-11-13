@@ -78,6 +78,11 @@ class Processor(AbstractProcessor):
         self.selection = iv.final_selection(centers, size, True)
         return self.selection
 
+    def get_injection_site_relative_to_point(self):
+        #needle_xy_pixel = iv.isolate_needle(self.img_in, self.grid_vertical)
+        pt = iv.get_position(self.centers[self.selection], self.grid_horizontal, self.grid_vertical)
+        return pt
+
     def get_correction_relative_to_point(self):
         needle_xy_pixel = iv.isolate_needle(self.img_in, self.grid_vertical)
         pt = iv.compare_points(self.centers[self.selection], needle_xy_pixel, self.grid_horizontal, self.grid_vertical)

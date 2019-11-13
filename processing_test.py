@@ -19,7 +19,7 @@ from matplotlib import pyplot as plt
 if __name__ == "__main__":
     # Read in the image
     grid_horizontal, grid_vertical = iv.initialize_grids('assets/coord_static_x_revised.png', 'assets/coord_static_y.png')
-    img_in = cv2.imread('justin_python/justin4.jpg', 0)
+    img_in = cv2.imread('gui-rawimg.jpg', 0)
     start = time.time()
     clusters = iv.get_centers(img_in, 40, grid_vertical)
     selection = iv.final_selection(clusters, np.shape(img_in))

@@ -55,6 +55,7 @@ class ForwardingCamera(threading.Thread):
                 #print('Image is %dx%d' % image.size)
                 #image.verify()
                 #print('Image is verified')
+                #print("received img..!")
 
                 self.frame = image
         finally:

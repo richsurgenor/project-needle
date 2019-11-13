@@ -37,7 +37,7 @@ if USING_PI:
     from pivideostream import PiVideoStream
 
     DARK_THEME = 1
-    SAVE_RAWIMG = 0                  # Save image after capture
+    SAVE_RAWIMG = 1                  # Save image after capture
 
     GANTRY_ON = 1                    # Control Gantry on/off for normal/mock modes
     MOCK_MODE_IMAGE_PROCESSING = 0   # Fake image processing but still run everything else
@@ -86,7 +86,7 @@ def set_forwarding_settings():
     CROPPED_RESOLUTION_HEIGHT = 1000
     SCALE_FACTOR = 2
 
-FAKE_INPUT_IMG = 1
+FAKE_INPUT_IMG = 0
 if FAKE_INPUT_IMG:
     FAKE_INPUT_IMG_NAME = "./justin_python/justin4.jpg"
     CAMERA_RESOLUTION_WIDTH = 3280
@@ -584,6 +584,9 @@ class MainWindow(QMainWindow):
         #TODO: redo this whole function
         print("Processing...")
         raw = self.feed.rawframe
+        raw = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB)
+        #if SAVE_RAWIMG:
+        cv2.imwrite('gui-rawimg.jpg', raw)
         height, width, channels = raw.shape
         bytes_per_line = width * 3
         q_img = QImage(raw.copy().data, width, height, bytes_per_line, QImage.Format_RGB888)
@@ -601,8 +604,6 @@ class MainWindow(QMainWindow):
         height, width = clahe_img.shape
         bytes_per_line = width
         q_img = QImage(clahe_img.copy().data, width, height, bytes_per_line, QImage.Format_Grayscale8)
-        if SAVE_RAWIMG:
-            cv2.imwrite('gui-rawimg.jpg', clahe_img)
         processed_img = QPixmap.fromImage(q_img)
 
         processed_img_scaled = processed_img.scaled(GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
@@ -652,7 +653,7 @@ class MainWindow(QMainWindow):
             self.display_coordinates(centers[final_selection][0],centers[final_selection][1])
             self.draw_processed_img_with_pts(processed_img_scaled, points, final_selection)
             self.processing_status.showMessage("Processing:   Final selection complete...")
-            correction_in_mm = self.processor.get_correction_relative_to_point()
+            correction_in_mm = self.processor.get_injection_site_relative_to_point()
             print("Coordinate in mm: x: {} y: {}".format(correction_in_mm[0], correction_in_mm[1]))
             self.gc.coordinate = self.processor.get_correction_in_steps_relative_to_point(correction_in_mm)
             self.display_correction(self.gc.coordinate[0], self.gc.coordinate[1])
