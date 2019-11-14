@@ -53,32 +53,35 @@ void gantry_init(){
 *Inputs:   no input
 /********************************************************************/
 void move_y_home(){
+	
+	int steps;
 
-	move_stepper(Y_AXIS, MM_TO_Y_HOME, FORWARD); // changed because STEPS_TO_Y_HOME was not declared
+	steps = mm_to_steps(Y_AXIS, MM_TO_Y_HOME);
+	move_stepper(Y_AXIS, steps, FORWARD); // changed because STEPS_TO_Y_HOME was not declared
 
 }
 
 /********************************************************************
 *Function: wait_for_coordinate
 *Purpose:  Waits to receive a valid coordinate from the Pi in the
-		   format (8xxxxxx) where xxx represents a 3 digit mm value
-		   and 8 being the command opcode to validate that this
-		   is a valid wait-for-coordinate packet
+		   format (8xxx9xxx) where xxx represents a 3 digit mm value
+		   and 8 and 9 being confirmation bytes to validate that this
+		   is a valid coordinate packet
 *Returns:  0 (valid coordinate received)
 *		   1 (invalid coordinate packet)
 *Inputs:   no input
 /********************************************************************/
 int wait_for_coordinate(){
 
-	int value[8];
-	while(Serial.available() < 8);
-	for(int i=0; i<8; i++){
+	int value[10];
+	while(Serial.available() < 10);
+	for(int i=0; i<10; i++){
 		value[i] = Serial.read();
 		Serial.write(value[i]);
 		Serial.println(value[i]);
 	}
 	Serial.println(""); // send eol
-	if (value[0] == CMD_WAIT_COORDINATE && value[4] == CMD_FINISH){
+	if (value[0] == CMD_WAIT_COORDINATE && value[5] == CMD_FINISH){
          /* Concerns
           * If value[0] is not the start of this packet.. but value[1+n] happens to be..
           * in reality we will be waiting to read in cmds and flushing the buffer definitely shouldnt happen
@@ -91,13 +94,13 @@ int wait_for_coordinate(){
           * moving the needle...
           */
 
-		for(int n = 1; n<4; n++){ // what is the purpose of this? offsetting the mm given?
-			value[n] -= 48; // put whatever 48 is in a gantry.hpp as a named constant.
-			value[n+4] -= 48;
+		for(int n = 1; n<5; n++){ // what is the purpose of this? offsetting the mm given?
+			value[n]   -= ASCII_TO_INT; // put whatever 48 is in a gantry.hpp as a named constant.
+			value[n+5] -= ASCII_TO_INT;
 		}
 
-		x_coord = (value[1]*100)+(value[2]*10)+value[3];
-		y_coord = (value[5]*100)+(value[6]*10)+value[7];
+		x_coord = (value[1]*1000)+(value[2]*100)+(value[3]*10)+value[4];
+		y_coord = (value[6]*1000)+(value[7]*100)+(value[8]*10)+value[9];
 		Serial.println(x_coord);
 		Serial.println(y_coord);
 	}
@@ -139,10 +142,18 @@ void move_cap_to_IL(){
 /********************************************************************/
 void position_needle(){
 
-	move_stepper(Z_AXIS, NEEDLE_Z_PROJ, BACKWARD);
-	move_stepper(Y_AXIS, NEEDLE_Y_PROJ, BACKWARD);
-	move_stepper(X_AXIS, NEEDLE_X_PROJ, FORWARD);
-	move_stepper(Z_AXIS, Z_REALIGN, FORWARD);
+	int step_x, step_y, step_z;
+	
+	step_x = mm_to_steps(X_AXIS, NEEDLE_X_PROJ);
+	step_y = mm_to_steps(Y_AXIS, NEEDLE_Y_PROJ);
+	step_z = mm_to_steps(Z_AXIS, NEEDLE_Z_PROJ);
+
+	move_stepper(Z_AXIS, step_z, BACKWARD);
+	move_stepper(Y_AXIS, step_y, BACKWARD);
+	move_stepper(X_AXIS, step_x, FORWARD);
+	
+	step_z = mm_to_steps(Z_AXIS, Z_REALIGN);
+	move_stepper(Z_AXIS, step_z, FORWARD);
 
 }
 
@@ -239,10 +250,20 @@ void pull_needle(){
 
 }
 void move_back_from_IL(){	//this will probably only be used for my testing purposes
-
-	int y_dist_travelled = ( MM_TO_Y_HOME + y_coord ) - NEEDLE_Y_PROJ;
-	int x_dist_travelled = x_coord + NEEDLE_X_PROJ;
 	
+	int y_dist_travelled, x_dist_travelled, steps_to_y_home,
+		y_adjust, x_adjust;
+	
+	steps_to_y_home = mm_to_steps(Y_AXIS, MM_TO_Y_HOME);
+	y_adjust = mm_to_steps(Y_AXIS, NEEDLE_Y_PROJ);
+	x_adjust = mm_to_steps(X_AXIS, NEEDLE_X_PROJ);
+
+	y_dist_travelled = ( steps_to_y_home + y_coord ) - y_adjust;
+	x_dist_travelled = x_coord + x_adjust;
+	
+	Serial.println(z_depth);
+	Serial.println(x_dist_travelled);
+	delay(3000);
 
 	move_stepper(Z_AXIS, z_depth, BACKWARD);			//this is not correct to make z go back home need to account for realignment
 	move_stepper(X_AXIS, x_dist_travelled, BACKWARD);
@@ -270,6 +291,14 @@ void go_home(){
 	}
 }
 
+void move_y_back(){
+
+	int steps_to_y_home;
+	
+	steps_to_y_home = mm_to_steps(Y_AXIS, MM_TO_Y_HOME);
+	move_stepper(Y_AXIS, steps_to_y_home, BACKWARD);
+	
+}
 
 /**********************************
  * END OF FUNCTIONS IN ORDER OF EXECUTION
@@ -319,15 +348,13 @@ void select_direction_pin(int dir){
 
 	if(dir == FORWARD){
 		digitalWrite(DIR_PIN_X,  HIGH);
-		digitalWrite(DIR_PIN_Y, HIGH);
-		//digitalWrite(DIR_PIN_Y, HIGH);
+		digitalWrite(DIR_PIN_Y,  HIGH);
 		digitalWrite(DIR_PIN_Z,  HIGH);
 	}
 
 	if(dir == BACKWARD){
 		digitalWrite(DIR_PIN_X,  LOW);
-		digitalWrite(DIR_PIN_Y, LOW);
-		//digitalWrite(DIR_PIN_Y, LOW);
+		digitalWrite(DIR_PIN_Y,  LOW);
 		digitalWrite(DIR_PIN_Z,  LOW);
 	}
 }
@@ -363,7 +390,7 @@ int select_step_pin(int axis){
 *		   coordinate_mm (e.g. 0mm to 1000mm) - distance to travel
 *		   dir (FORWARD, BACKWARD) - direction to move actuator
 /********************************************************************/
-int move_stepper(int axis, int coordinate_mm, int dir){
+int move_stepper(int axis, int nSteps, int dir){
 
     /*
      * Status msgs
@@ -374,8 +401,8 @@ int move_stepper(int axis, int coordinate_mm, int dir){
 		stepPin,
 		steps;
 		
-	steps = mm_to_steps(axis, coordinate_mm);
-	if(coordinate_mm == z_depth){
+	steps = nSteps;
+	if(nSteps == z_depth){
 		steps = z_depth;
 	}
 	select_direction_pin(dir);
@@ -393,15 +420,8 @@ int move_stepper(int axis, int coordinate_mm, int dir){
 			return(1);
 		}
 		digitalWrite(stepPin, HIGH);
-		/*if(axis == Y_AXIS){
-			digitalWrite(STEP_PIN_Y2, HIGH);
-		}*/
 		delay(2);
 		digitalWrite(stepPin, LOW);
-		/*if(axis == Y_AXIS){
-			digitalWrite(STEP_PIN_Y2, LOW);
-		}*/
-		//digitalWrite(STEP_PIN_Y2, LOW);
 		delay(2);
 		Serial.println(i);
 	}
@@ -457,6 +477,13 @@ void status_msg(const char* msg) {
     Serial.println(msg);
 }
 
+void decode_req_move_stepper(const char* msg) {
+    // Get an array of 2 ints for x then y respectively
+    int axes[2];
+
+    //decode msg
+}
+
 /********************************************************************
 *Function: process_req
 *Purpose:  Process serial requests as they come in from the Pi
@@ -468,7 +495,6 @@ void status_msg(const char* msg) {
 int process_req(const char* msg) {
     int cmd = int(msg[0]);
     int m;
-    int *coordinate_result;
     switch(cmd) {
         case REQ_ECHO_MSG:
             status_msg(msg+1); // pass ptr to msg+1 because first byte is cmd byte (this will just echo)
@@ -480,9 +506,6 @@ int process_req(const char* msg) {
 
             m = wait_for_coordinate();
             break;
-        case REQ_WAIT_COORDINATE:
-            decode_coordinate(msg+1);
-            //move_stepper
         case REQ_MOVE_STEPPER:
             status_msg("Moving stepper...");
             decode_req_move_stepper(msg+1);
@@ -514,11 +537,6 @@ int process_req(const char* msg) {
     //Serial.write(in_cmd);
 }
 
-void move_y_back(){
-
-	move_stepper(Y_AXIS, MM_TO_Y_HOME, BACKWARD);
-	
-}
 
 void decode_coordinate(const char* msg) {
     // For now we will say xxxx xxxx where each group of x is the x then y
