@@ -20,7 +20,7 @@ IP = "192.168.0.1"
 # TODO: auto try to reconnect if disconnected from server...
 
 class ImageStreamer(threading.Thread):
-    def __init__(self, connection, client_socket, pool):
+    def __init__(self, connection, client_socket, pool, connection_lock, pool_lock):
         super(ImageStreamer, self).__init__()
         self.stream = io.BytesIO()
         self.event = threading.Event()
@@ -30,6 +30,8 @@ class ImageStreamer(threading.Thread):
         self.connection = connection
         self.client_socket = client_socket
         self.pool = pool
+        self.connection_lock = connection_lock
+        self.pool_lock = pool_lock
 
     def run(self):
         # This method runs in a background thread

@@ -40,7 +40,7 @@ class Forwarder:
 
             with picamera.PiCamera() as camera:
                 # ...maintain a queue of objects to store the captures
-                pool = [ImageStreamer(self.connection, self.client_socket, self.pool) for i in range(4)]
+                pool = [ImageStreamer(self.connection, self.client_socket, self.pool, self.connection_lock, self.pool_lock) for i in range(4)]
                 camera.resolution = (1000, 1000)
                 camera.framerate = 10  # should be raised??
                 camera.awb_mode = 'tungsten'
