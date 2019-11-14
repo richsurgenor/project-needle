@@ -4,7 +4,7 @@
 #define SCREW_LEAD_Y	8
 #define SCREW_LEAD_Z	8
 #define STEPS_PER_REVOLUTION	200
-#define MM_TO_Y_HOME	120  //was 151
+#define MM_TO_Y_HOME	155  //was 151
 #define NEEDLE_Z_PROJ	3
 #define Z_REALIGN	5.5
 #define	NEEDLE_Y_PROJ	12
@@ -18,11 +18,9 @@
 #define BACKWARD 1
 #define STEP_PIN_X 49
 #define STEP_PIN_Y 53
-//#define STEP_PIN_Y2 52
 #define STEP_PIN_Z 46
 #define DIR_PIN_X 48
 #define DIR_PIN_Y 51
-//#define DIR_PIN_Y2 50
 #define DIR_PIN_Z 47
 #define CAP_SENSE_PIN	30
 #define SERVO_PIN	A0
@@ -30,34 +28,30 @@
 #define LIMIT_X_HOME_PIN 21
 #define LIMIT_Z_HOME_PIN 22
 #define potpin A2  // analog pin used to connect the potentiometer
+#define ASCII_TO_INT 48 //subtract 48 from an ascii value to make it a decimal value (e.g. 56 -> 8)
 
-#define HEADLESS 0 // where we just go through a basic series of operations with no cmds expected from pi
+#define HEADLESS 1 // where we just go through a basic series of operations with no cmds expected from pi
 
 // Requests from Pi
-#define REQ_ECHO_MSG (int) '0'
+#define REQ_ECHO_MSG (int) 		  '0'
 #define REQ_POSITION_UPDATE (int) '1'
-#define REQ_MOVE_Y_HOME (int) '2'
-#define REQ_MOVE_STEPPER (int) '3'
-#define REQ_GO_TO_WORK (int) '4' // after pi gives coordinate pi tells to go ahead...
-#define REQ_WAIT_COORDINATE (int) '5'
-#define REQ_RESET (int) '9'
+#define REQ_MOVE_Y_HOME (int) 	  '2'
+#define REQ_MOVE_STEPPER (int) 	  '3'
+#define REQ_GO_TO_WORK (int)      '4' // after pi gives coordinate pi tells to go ahead...
+#define REQ_RESET (int)           '9'
 
 // Commands to Pi
-#define CMD_STATUS_MSG (int) '0'
+#define CMD_STATUS_MSG (int)         '0'
 #define CMD_GANTRY_INITIALIZED (int) '1'
-#define CMD_POSITION_UPDATE (int) '2'
-#define CMD_WAIT_COORDINATE (int) '8'
-#define CMD_FINISH (int) '9'
-
-/*extern volatile int x_coord;
-extern volatile int y_coord;
-extern volatile int z_coord;*/
+#define CMD_POSITION_UPDATE (int)    '2'
+#define CMD_WAIT_COORDINATE (int)    '8'
+#define CMD_FINISH (int)             '9'
 
 int 	mm_to_steps(int axis, double distance);
 void 	select_direction_pin(int dir);
 int 	select_step_pin(int axis);
 void 	gantry_init();
-int 	move_stepper(int axis, int coordinate_mm, int dir);
+int 	move_stepper(int axis, int nSteps, int dir);
 void 	move_y_home();
 int 	wait_for_coordinate();
 void 	move_cap_to_IL();
