@@ -20,6 +20,14 @@ if __name__ == "__main__":
             print("Initializing with forwarding client (Pi)...")
             import forwarding
             fwder = forwarding.Forwarder()
+            while True:
+                if fwder.closed:
+                    del fwder
+                    fwder = None
+                    print("Attempting to recreate connection..")
+                    fwder = forwarding.Forwarder()
+                pass
+
         else:
             print("Initializing with forwarding server (PC)...")
             ui_main(True)
