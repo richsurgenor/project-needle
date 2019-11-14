@@ -13,10 +13,11 @@ import struct
 import time
 import threading
 import picamera
+import io
 
-IP = "192.168.1.1"
+IP = "192.168.0.1"
 client_socket = socket.socket()
-client_socket.connect((IP, 8000))
+client_socket.connect((IP, 8002))
 connection = client_socket.makefile('wb')
 # TODO: auto try to reconnect if disconnected from server...
 try:
@@ -57,7 +58,7 @@ try:
 
     def streams():
         global count, finish
-        while finish - start < 30:
+        while True:
             with pool_lock:
                 if pool:
                     streamer = pool.pop()
@@ -75,8 +76,9 @@ try:
     with picamera.PiCamera() as camera:
         # ...maintain a queue of objects to store the captures
         pool = [ImageStreamer() for i in range(4)]
-        camera.resolution = (1920, 1080)
-        camera.framerate = 30 # should be raised??
+        camera.resolution = (1000, 1000)
+        camera.framerate = 10 # should be raised??
+        camera.awb_mode = 'tungsten'
         time.sleep(2)
         start = time.time()
         camera.capture_sequence(streams(), 'jpeg', use_video_port=True)

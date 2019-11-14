@@ -22,7 +22,6 @@ import os
 import forwarding_server
 import common
 from scipy.io import savemat
-from skimage import color
 
 import common
 
