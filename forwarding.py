@@ -45,9 +45,9 @@ class Forwarder:
                 camera.framerate = 10  # should be raised??
                 camera.awb_mode = 'tungsten'
                 time.sleep(2)
-                start = time.time()
                 camera.capture_sequence(streams(self.pool, self.pool_lock), 'jpeg', use_video_port=True)
 
+            '''
             # Shut down the streamers in an orderly fashion
             while self.pool:
                 streamer = self.pool.pop()
@@ -58,6 +58,7 @@ class Forwarder:
             # know we're done
             with self.connection_lock:
                 self.connection.write(struct.pack('<L', 0))
+            '''
 
         finally:
             self.closed = True
