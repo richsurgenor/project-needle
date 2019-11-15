@@ -32,6 +32,8 @@ class ImageStreamer(threading.Thread):
         self.pool = pool
         self.connection_lock = connection_lock
         self.pool_lock = pool_lock
+        self.id = None
+        self.dead = False
 
     def run(self):
         # This method runs in a background thread
@@ -45,10 +47,14 @@ class ImageStreamer(threading.Thread):
                         self.connection.flush()
                         self.stream.seek(0)
                         self.connection.write(self.stream.read())
+                except Exception as e:
+                    print("caught exception!!")
+                    self.dead = True
                 finally:
                     self.stream.seek(0)
                     self.stream.truncate()
                     self.event.clear()
                     with self.pool_lock:
                         self.pool.append(self)
+                
 

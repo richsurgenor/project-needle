@@ -19,7 +19,10 @@ def streams(pool, pool_lock):
                 streamer = None
         if streamer:
             yield streamer.stream
+            print("Got streamer {}".format(str(streamer.id)))
             streamer.event.set()
+            if streamer.dead:
+                break
         else:
             # When the pool is starved, wait a while for it to refill
             time.sleep(0.1)
@@ -40,7 +43,10 @@ class Forwarder:
 
             with picamera.PiCamera() as camera:
                 # ...maintain a queue of objects to store the captures
-                self.pool = [ImageStreamer(self.connection, self.client_socket, self.pool, self.connection_lock, self.pool_lock) for i in range(4)]
+                for i in range(0, 4):
+                    self.pool.append(ImageStreamer(self.connection, self.client_socket, self.pool, self.connection_lock, self.pool_lock))
+                    self.pool[i].id = i
+                    print("Added stream {}".format(str(i)))
                 camera.resolution = (1000, 1000)
                 camera.framerate = 10  # should be raised??
                 camera.awb_mode = 'tungsten'
@@ -62,8 +68,11 @@ class Forwarder:
 
         finally:
             self.closed = True
-            self.connection.close()
-            self.client_socket.close()
+            try:
+                self.connection.close()
+                self.client_socket.close()
+            except Exception as e:
+                print("broken pipe..")
 
 
         #cam = pinetworkvideostream.ImageStreamer(connection, client_socket)

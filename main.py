@@ -11,6 +11,7 @@ Justin Sutherland, Laura Grace Ayers.
 from gui import ui_main
 import sys
 import os
+import time
 
 USING_PI = os.uname()[4][:3] == 'arm'
 
@@ -25,7 +26,11 @@ if __name__ == "__main__":
                     del fwder
                     fwder = None
                     print("Attempting to recreate connection..")
-                    fwder = forwarding.Forwarder()
+                    try:
+                        fwder = forwarding.Forwarder()
+                    except Exception as e:
+                        print("failed..")
+                    time.sleep(2)
                 pass
 
         else:
