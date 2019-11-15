@@ -54,7 +54,7 @@ if USING_PI:
     SCALE_FACTOR = 2  # TODO: scale factor could be auto-calced..
 
 else:
-    DARK_THEME = 0
+    DARK_THEME = 1
     SAVE_RAWIMG = 0
 
     GANTRY_ON = 1
