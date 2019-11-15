@@ -3,6 +3,8 @@ from math import sqrt
 from functools import reduce
 from statistics import median
 import numpy as np
+import os
+import cv2
 
 def cropND(img, bounding):
     start = tuple(map(lambda a, da: a//2-da//2, img.shape, bounding))
@@ -80,3 +82,10 @@ def is_numpy_array_avail(obj):
     else:
         return False
 
+#############################################################################
+
+def log_image(img, text):
+    i = 0
+    while os.path.exists("%s%s" % (text, i)):
+        i += 1
+    cv2.imwrite("logs/%s%s.jpg" % (text, i), img)

@@ -52,6 +52,7 @@ class Processor(AbstractProcessor):
                                                                        'assets/coord_static_y.png')
         self.grid_horizontal = cv2.resize(self.grid_horizontal, (camera_width, camera_height))
         self.grid_vertical = cv2.resize(self.grid_vertical, (camera_width, camera_height))
+        self.centers = None
         self.selection = None
 
     def apply_clahe(self, image):
@@ -79,18 +80,22 @@ class Processor(AbstractProcessor):
         self.selection = iv.final_selection(centers, size, True)
         return self.selection
 
-    def get_injection_site_relative_to_point(self):
+    def get_injection_site_relative_to_point(self, **kwargs):
         #needle_xy_pixel = iv.isolate_needle(self.img_in, self.grid_vertical)
-        pt = iv.get_position(self.centers[self.selection], self.grid_horizontal, self.grid_vertical)
+        if 'index' not in kwargs:
+            pt = iv.get_position(self.centers[self.selection], self.grid_horizontal, self.grid_vertical)
+        else:
+            pt = iv.get_position(self.centers[kwargs['index']], self.grid_horizontal, self.grid_vertical)
         return pt
 
     def get_correction_relative_to_point(self):
         needle_xy_pixel = iv.isolate_needle(self.img_in, self.grid_vertical)
         pt = iv.compare_points(self.centers[self.selection], needle_xy_pixel, self.grid_horizontal, self.grid_vertical)
-        return pt
+        # TODO: why to get this to work we had to flip the axes and offset the x by 10 :)
+        realpt = [pt[1]-10, pt[0]]
+        return realpt
 
     def mm_to_steps(self, axis, distance):
-
         if axis == X_AXIS:
             screw_lead_axis = SCREW_LEAD_X
         elif axis == Y_AXIS:
@@ -101,10 +106,9 @@ class Processor(AbstractProcessor):
         totalSteps = float(STEPS_PER_REVOLUTION) * (1 / float(screw_lead_axis) * (float(distance + 1)))
         return int(round(totalSteps))
 
-    def get_correction_in_steps_relative_to_point(self, correction_in_mm):
-        # to get this to work we had to flip the axes and offset the x by 10 :)
-        x_steps = self.mm_to_steps(X_AXIS, correction_in_mm[1] - 10)
-        y_steps = self.mm_to_steps(Y_AXIS, correction_in_mm[0])
+    def get_injection_site_in_steps_relative_to_point(self, injection_site_in_mm):
+        x_steps = self.mm_to_steps(X_AXIS, injection_site_in_mm[0])
+        y_steps = self.mm_to_steps(Y_AXIS, injection_site_in_mm[1])
         return [x_steps, y_steps]
 
 def get_direction(current, target):
@@ -348,8 +352,6 @@ class GantryController(AbstractGantryController):
                     print("Received position update...")
 
         print("gantry thread ended...")
-
-                    #print(line)
 
     def get_current_gantry_pos(self):
         pass

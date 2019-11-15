@@ -12,7 +12,7 @@ Justin Sutherland, Laura Grace Ayers.
 
 from PyQt5.QtCore import Qt, QCoreApplication, QSize, QThread, QFile, QTextStream, QPoint
 from PyQt5.QtWidgets import *
-from PyQt5.QtGui import QPixmap, QPainter, QImage, QColor
+from PyQt5.QtGui import QPixmap, QPainter, QImage, QColor, QStandardItemModel
 import numpy
 import cv2
 import sys
@@ -20,21 +20,29 @@ import api
 import time
 import os
 import forwarding_server
-import common
-from scipy.io import savemat
+from common import log_image
 
 import common
 
 USING_PI = os.uname()[4][:3] == 'arm'
 
+###############
+# Non-Settings:
+AUTOMATIC = 0
+SEMIAUTOMATIC = 1
+MANUAL = 2
+###############
+
+# Settings
+DEFAULT_MODE = AUTOMATIC
 BORDER_SIZE = 10
 HALF_BORDER_SIZE = BORDER_SIZE/2
 FPS = 10
-FINAL_SELECTION = 1 #temporary
 
 if USING_PI:
     from pivideostream import PiVideoStream
 
+    LOGGING = 1
     DARK_THEME = 1
     SAVE_RAWIMG = 1                  # Save image after capture
 
@@ -54,8 +62,9 @@ if USING_PI:
     SCALE_FACTOR = 2  # TODO: scale factor could be auto-calced..
 
 else:
-    DARK_THEME = 1
+    DARK_THEME = 0
     SAVE_RAWIMG = 0
+    LOGGING = 0
 
     GANTRY_ON = 1
     MOCK_MODE_IMAGE_PROCESSING = 0
@@ -75,7 +84,11 @@ else:
 def set_forwarding_settings():
     global CAMERA_RESOLUTION_WIDTH,CAMERA_RESOLUTION_HEIGHT, \
     GUI_IMAGE_SIZE_WIDTH,GUI_IMAGE_SIZE_HEIGHT,CROPPING_ENABLED, \
-    CROPPED_RESOLUTION_WIDTH,CROPPED_RESOLUTION_HEIGHT,SCALE_FACTOR
+    CROPPED_RESOLUTION_WIDTH,CROPPED_RESOLUTION_HEIGHT,SCALE_FACTOR, \
+    LOGGING, SAVE_RAWIMG
+
+    LOGGING = 1
+    SAVE_RAWIMG = 1
     CAMERA_RESOLUTION_WIDTH = 1000
     CAMERA_RESOLUTION_HEIGHT = 1000
     GUI_IMAGE_SIZE_WIDTH = CAMERA_RESOLUTION_WIDTH/2
@@ -124,6 +137,18 @@ def _createCntrBtn(*args):
         l.addWidget(arg)
     #l.addStretch()
     return l
+
+def get_effective_image_height():
+    if CROPPING_ENABLED:
+        return CROPPED_RESOLUTION_HEIGHT
+    else:
+        return CAMERA_RESOLUTION_HEIGHT
+
+def get_effective_image_width():
+    if CROPPING_ENABLED:
+        return CROPPED_RESOLUTION_WIDTH
+    else:
+        return CAMERA_RESOLUTION_WIDTH
 
 def get_processor():
     if MOCK_MODE_IMAGE_PROCESSING:
@@ -284,23 +309,24 @@ class QProcessedImageGroupBox(QGroupBox):
         super(QGroupBox, self).__init__(text)
         self.parent = parent
         self._layout = QVBoxLayout()
+        self._layout.setSpacing(0)
         self.setLayout(self._layout)
         self.img = img
 
         self.image_label = QImageLabel("", img)
-        self.display_coords = QLabel("Coordinates:")
-        self.display_correction_label = QLabel("Correction:")
+        self.display_coords = QLabel("Coordinates(pixels): ")
+        self.display_injection_site_label = QLabel("Injection Site(mm): \nInjection Site(steps): ")
         self.display_coords.setStyleSheet("font-weight: bold; color: red");
-        self.display_correction_label.setStyleSheet("font-weight: bold; color: red");
+        self.display_injection_site_label.setStyleSheet("font-weight: bold; color: red");
 
         self._layout.addWidget(self.image_label)
         self._layout.addWidget(self.display_coords)
-        self._layout.addWidget(self.display_correction_label)
+        self._layout.addWidget(self.display_injection_site_label)
 
         self.points = None
 
         # Configure mouse press on processed image widget
-        self.image_label.mousePressEvent = self.getPos
+        self.image_label.mousePressEvent = self.get_pos
         #self.image_label.connect(self, pyqtSignal("clicked()"), self.getPos)
 
     def get_layout(self):
@@ -309,13 +335,37 @@ class QProcessedImageGroupBox(QGroupBox):
     def update_image(self, img):
         self.image_label.img = img
 
-    def getPos(self, event):
+    def reset(self):
+        self.image_label.set_status(False)
+        self.image_label.img = None
+
+    def get_pos(self, event):
         # TODO: Reverse scaling to get closet coordinates...
 
-        if isinstance(self.points, list) or common.is_numpy_array_avail(self.points):
-            print(type(self.points))
-            selected_x = event.pos().x() - HALF_BORDER_SIZE - 4
-            selected_y = event.pos().y() - HALF_BORDER_SIZE - 4
+        if not self.image_label.img:
+            print('User tried to click point before any existed.')
+            return
+
+        selected_x = event.pos().x() - HALF_BORDER_SIZE - 4
+        selected_y = event.pos().y() - HALF_BORDER_SIZE - 4
+        mode = self.parent.get_active_mode()
+        if mode == MANUAL:
+            # now we scale points up instead... :) at a loss of accuracy :(
+            factor_x = float(CAMERA_RESOLUTION_WIDTH) / GUI_IMAGE_SIZE_WIDTH
+            factor_y = float(CAMERA_RESOLUTION_HEIGHT) / GUI_IMAGE_SIZE_HEIGHT
+
+            scaled_x = int(round(factor_x * selected_x))
+            scaled_y = int(round(factor_y * selected_y))
+
+            self.points = [(int(selected_x), int(selected_y))]
+            self.parent.processor.centers = [(scaled_x, scaled_y)]
+            chosen = 0 # only one point...
+            self.parent.draw_processed_img_with_pts(self.parent.masked_img, self.points, chosen)
+            self.image_label.repaint()
+            self.parent.display_coordinates(self.parent.output_box.points[chosen][0],
+                                            self.parent.output_box.points[chosen][1])
+            self.parent.process_point(index=chosen)
+        else:
 
             best_x = 10000
             best_y = 10000
@@ -336,8 +386,9 @@ class QProcessedImageGroupBox(QGroupBox):
                     chosen = i
             #print("best_x: " + str(best_x) + " best_y: " + str(best_y))
             self.parent.draw_processed_img_with_pts(self.image_label.img, self.points, chosen)
-        else:
-            print('User tried to click point before any existed.')
+            self.parent.display_coordinates(self.parent.output_box.points[chosen][0],
+                                            self.parent.output_box.points[chosen][1])
+            self.parent.process_point(index=chosen)
 
 
 class QImageLabel(QLabel):
@@ -399,6 +450,37 @@ class QInputBox(QLabel):
     def sizeHint(self):
         return QSize(GUI_IMAGE_SIZE_WIDTH + BORDER_SIZE, GUI_IMAGE_SIZE_HEIGHT + BORDER_SIZE)
 
+class QModeMenuWidget(QWidget):
+    def __init__(self, parent):
+        super(QWidget, self).__init__()
+        self.titles = ["Automatic Mode", "Semiautomatic Mode", "Manual Mode"]
+        self.checkboxes = []
+        self.checkboxes_layout = QHBoxLayout()
+        self.group = QButtonGroup()
+        self.parent = parent
+
+        self.current = 0
+
+        for i in range(0, len(self.titles)):
+            title = self.titles[i]
+            checkbox = QCheckBox(title)
+            checkbox.setCheckState(Qt.Unchecked)
+            self.checkboxes.append(checkbox)
+            self.group.addButton(checkbox, i)
+            self.checkboxes_layout.addWidget(self.checkboxes[i])
+
+        self.checkboxes[DEFAULT_MODE].setCheckState(Qt.Checked)
+        self.group.buttonClicked.connect(self.mode_change_event)
+
+        self.checkboxes_layout.setAlignment(Qt.AlignLeft)
+        self.checkboxes_layout.setSpacing(30)
+        self.setLayout(self.checkboxes_layout)
+
+    def mode_change_event(self, button):
+        self.parent.output_box.reset()
+        pass
+
+
 class MainWindow(QMainWindow):
     """
     Main window for application.
@@ -437,19 +519,7 @@ class MainWindow(QMainWindow):
         self.processing_status = QStatusBar()
         self._layout.addWidget(self.processing_status)
 
-        self.checkbox_widget = QWidget()
-        self.checkboxes_layout = QHBoxLayout()
-        self.checkbox_widget.setLayout(self.checkboxes_layout)
-        self.checkbox = QCheckBox("Automatic Mode")
-        self.checkbox.setCheckState(Qt.Unchecked)
-        self.checkbox2 = QCheckBox("Semiautomatic Mode")
-        self.checkbox2.setCheckState(Qt.Checked)
-        self.checkbox3 = QCheckBox("Manual Mode")
-        self.checkbox3.setCheckState(Qt.Unchecked)
-        #self.checkbox.initStyleOption
-        self.checkboxes_layout.addWidget(self.checkbox)
-        self.checkboxes_layout.addWidget(self.checkbox2)
-        self.checkboxes_layout.addWidget(self.checkbox3)
+        self.checkbox_widget = QModeMenuWidget(self)
         self._layout.addWidget(self.checkbox_widget)
 
         #self._layout.addWidget(self.centralWidget)
@@ -510,11 +580,25 @@ class MainWindow(QMainWindow):
 
         self.show()
 
-    def display_coordinates(self, x, y):
-        self.output_box.display_coords.setText("Coordinates: x: " + str(x) + " y: " + str(y))
+    def get_active_mode(self):
+        return self.checkbox_widget.group.checkedId() # will correspond to modes
 
-    def display_correction(self, x, y):
-        self.output_box.display_correction_label.setText("Correction: x: " + str(x) + " away. y: " + str(y) + " down.")
+    def display_coordinates(self, x, y):
+        self.output_box.display_coords.setText("Coordinates(pixels): x: " + str(x) + " y: " + str(y))
+        self.output_box.display_coords.repaint()
+
+    def display_injection_site(self, x, y, x_steps, y_steps):
+        self.output_box.display_injection_site_label.setText("Injection Site(mm): x: " + str(x) + " away. y: " + str(y) + " down." \
+                + "\nInjection Site(steps): x: " + str(x_steps) + " away. y: " + str(y_steps) + " down.")
+        self.output_box.display_injection_site_label.repaint()
+
+    def clear_coordinates(self):
+        self.output_box.display_coords.setText("Coordinates(pixels): ")
+        self.output_box.display_coords.repaint()
+
+    def clear_injection_site(self):
+        self.output_box.display_injection_site_label.setText("Injection Site(mm): \nInjection Site(steps): ")
+        self.output_box.display_injection_site_label.repaint()
 
     #class ProcessingThread(QThread): TODO: do we need this?
 
@@ -571,9 +655,36 @@ class MainWindow(QMainWindow):
         self.output_box.update_image(result)
         self.output_box.image_label.set_status(True)
 
+    def process_point(self, **kwargs):
+        success = 0
+        try:
+            if 'index' in kwargs:
+                injection_site_in_mm = self.processor.get_injection_site_relative_to_point(index=kwargs['index'])
+            else:
+                injection_site_in_mm = self.processor.get_injection_site_relative_to_point()
+            success = 1
+        except IndexError as e:
+            # This occurs sometimes.. usually during slice_grid from spookylib...
+            QMessageBox.information(None, 'Error 1', 'Getting injection site in mm failed.', QMessageBox.Ok)
+            if LOGGING and 'index' not in kwargs: # only log if in automatic mode...
+                log_image(self.processor.img_in, "error_1_num")
+        except Exception as e:
+            print("=====Unknown Error getting injection site...=====")
+            print("{} : {}".format(type(e), e))
+            if LOGGING and 'index' not in kwargs:
+                log_image(self.processor.img_in, "error_unk_num")
+
+        if success:
+            print("Coordinate in mm: x: {} y: {}".format(injection_site_in_mm[0], injection_site_in_mm[1]))
+            self.gc.coordinate = self.processor.get_injection_site_in_steps_relative_to_point(injection_site_in_mm)
+            self.display_injection_site(injection_site_in_mm[0], injection_site_in_mm[1], self.gc.coordinate[0],
+                                        self.gc.coordinate[1])
+            QCoreApplication.processEvents()
+
     """
     Events
     """
+
     def process_image_event(self):
         """
         Receive processed image and use the received points to display a final image.
@@ -582,6 +693,13 @@ class MainWindow(QMainWindow):
 
         #TODO: redo this whole function
         print("Processing...")
+        # clear old
+        self.clear_coordinates()
+        self.clear_injection_site()
+        self.output_box.points = None
+        self.processor.centers = None
+        self.processor.selection = None
+
         raw = self.feed.rawframe
         raw = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB)
         #if SAVE_RAWIMG:
@@ -619,7 +737,11 @@ class MainWindow(QMainWindow):
         q_img = QImage(thresholding_img.copy().data, width, height, bytes_per_line, QImage.Format_Grayscale8)
         processed_img = QPixmap.fromImage(q_img)
         processed_img_scaled = processed_img.scaled(GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
+        self.masked_img = processed_img_scaled.copy()
         self.draw_output_img(processed_img_scaled)
+        if self.get_active_mode() == MANUAL:
+            self.processing_status.showMessage("Mask complete! You can now manually select a point...")
+            return
         self.processing_status.showMessage("Processing:   Calculating optimal points...")
         QCoreApplication.processEvents()
         #QThread.msleep(1000)
@@ -627,12 +749,8 @@ class MainWindow(QMainWindow):
         #numpy.savetxt('test2.txt', centers, fmt='%d')
         points = numpy.copy(centers)
 
-        if CROPPING_ENABLED:
-            scalex = float(CROPPED_RESOLUTION_WIDTH) / GUI_IMAGE_SIZE_WIDTH
-            scaley = float(CROPPED_RESOLUTION_HEIGHT) / GUI_IMAGE_SIZE_HEIGHT
-        else:
-            scalex = float(CAMERA_RESOLUTION_WIDTH) / GUI_IMAGE_SIZE_WIDTH
-            scaley = float(CAMERA_RESOLUTION_HEIGHT) / GUI_IMAGE_SIZE_HEIGHT
+        scalex = float(get_effective_image_width()) / GUI_IMAGE_SIZE_WIDTH
+        scaley = float(get_effective_image_height()) / GUI_IMAGE_SIZE_HEIGHT
         #scalex = int(scalex)
         #scaley = int(scaley)
 
@@ -644,8 +762,8 @@ class MainWindow(QMainWindow):
 
         self.output_box.points = points
         self.draw_processed_img_with_pts(processed_img_scaled, points, -1)
-        self.processing_status.showMessage("Processing:   Searching for final selection...")
-        if FINAL_SELECTION:
+        if self.get_active_mode() == AUTOMATIC:
+            self.processing_status.showMessage("Processing:   Searching for final selection...")
             QCoreApplication.processEvents()
             #QThread.msleep(2000)
             final_selection = self.processor.get_final_selection(numpy.shape(raw), centers)
@@ -653,11 +771,13 @@ class MainWindow(QMainWindow):
                 self.display_coordinates(centers[final_selection][0],centers[final_selection][1]) # TODO what if no coordinate...
                 self.draw_processed_img_with_pts(processed_img_scaled, points, final_selection)
                 self.processing_status.showMessage("Processing:   Final selection complete...")
-                correction_in_mm = self.processor.get_injection_site_relative_to_point()
-                print("Coordinate in mm: x: {} y: {}".format(correction_in_mm[0], correction_in_mm[1]))
-                self.gc.coordinate = self.processor.get_correction_in_steps_relative_to_point(correction_in_mm)
-                self.display_correction(self.gc.coordinate[0], self.gc.coordinate[1])
-                QCoreApplication.processEvents()
+                self.process_point()
+            else:
+                QMessageBox.information(None, 'Error 2', 'No final selection was returned.', QMessageBox.Ok)
+                if LOGGING:
+                    log_image(self.processor.img_in, "error_2_num")
+        else:
+            self.processing_status.showMessage("Processing:   Optimal points found!")
 
     def gantry_start_event(self):
         self.gantry_status.showMessage("Starting Gantry...")
@@ -675,7 +795,7 @@ class MainWindow(QMainWindow):
         # TODO: actually make this reset the entire state of the GUI
 
     def calibrate_event(self):
-        QMessageBox.information(None, 'Calibration', 'Wow!', QMessageBox.Ok)
+        QMessageBox.information(None, 'Calibration', 'pretty sure this is a meme now.', QMessageBox.Ok)
         # TODO: deem if this is a necessary functionality or if we will keep it in arduino code
 
     def close_event(self):
@@ -688,7 +808,6 @@ class MainWindow(QMainWindow):
                 print("closed serial interface..")
         time.sleep(1)
         qApp.exit()
-        # TODO: deem if this is a necessary functionality or if we will keep it in arduino code
 
     def settings_event(self):
         pass
