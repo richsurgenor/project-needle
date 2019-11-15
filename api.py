@@ -41,6 +41,10 @@ class ProcessorMock(AbstractProcessor):
 
 
 class Processor(AbstractProcessor):
+    """
+    Effectively a state tracker for the image-processing. Provides an interface between the GUI and the
+    image processing libraries.
+    """
 
     def __init__(self, camera_width, camera_height):
         self.img_in = None
@@ -49,9 +53,6 @@ class Processor(AbstractProcessor):
         self.grid_horizontal = cv2.resize(self.grid_horizontal, (camera_width, camera_height))
         self.grid_vertical = cv2.resize(self.grid_vertical, (camera_width, camera_height))
         self.selection = None
-
-    #def update_grids(self, image):
-
 
     def apply_clahe(self, image):
         self.img_in = image
@@ -101,10 +102,10 @@ class Processor(AbstractProcessor):
         return int(round(totalSteps))
 
     def get_correction_in_steps_relative_to_point(self, correction_in_mm):
-        x_steps = self.mm_to_steps(X_AXIS, correction_in_mm[0])
-        y_steps = self.mm_to_steps(Y_AXIS, correction_in_mm[1])
+        # to get this to work we had to flip the axes and offset the x by 10 :)
+        x_steps = self.mm_to_steps(X_AXIS, correction_in_mm[1] - 10)
+        y_steps = self.mm_to_steps(Y_AXIS, correction_in_mm[0])
         return [x_steps, y_steps]
-
 
 def get_direction(current, target):
     if current - target < 0:
@@ -279,6 +280,7 @@ class AbstractGantryController(threading.Thread):
         """
         msg = cmd + msg
         self.gantry.write(msg.encode('ascii'))
+
 
 # Requests from Pi
 REQ_ECHO_MSG = '0'

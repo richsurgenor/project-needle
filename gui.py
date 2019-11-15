@@ -649,14 +649,15 @@ class MainWindow(QMainWindow):
             QCoreApplication.processEvents()
             #QThread.msleep(2000)
             final_selection = self.processor.get_final_selection(numpy.shape(raw), centers)
-            self.display_coordinates(centers[final_selection][0],centers[final_selection][1])
-            self.draw_processed_img_with_pts(processed_img_scaled, points, final_selection)
-            self.processing_status.showMessage("Processing:   Final selection complete...")
-            correction_in_mm = self.processor.get_injection_site_relative_to_point()
-            print("Coordinate in mm: x: {} y: {}".format(correction_in_mm[0], correction_in_mm[1]))
-            self.gc.coordinate = self.processor.get_correction_in_steps_relative_to_point(correction_in_mm)
-            self.display_correction(self.gc.coordinate[0], self.gc.coordinate[1])
-            QCoreApplication.processEvents()
+            if final_selection:
+                self.display_coordinates(centers[final_selection][0],centers[final_selection][1]) # TODO what if no coordinate...
+                self.draw_processed_img_with_pts(processed_img_scaled, points, final_selection)
+                self.processing_status.showMessage("Processing:   Final selection complete...")
+                correction_in_mm = self.processor.get_injection_site_relative_to_point()
+                print("Coordinate in mm: x: {} y: {}".format(correction_in_mm[0], correction_in_mm[1]))
+                self.gc.coordinate = self.processor.get_correction_in_steps_relative_to_point(correction_in_mm)
+                self.display_correction(self.gc.coordinate[0], self.gc.coordinate[1])
+                QCoreApplication.processEvents()
 
     def gantry_start_event(self):
         self.gantry_status.showMessage("Starting Gantry...")
