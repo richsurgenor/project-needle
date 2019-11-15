@@ -73,16 +73,16 @@ def count_loop(array, selection, xory):
     k = 0
     for each in array:
 
-        if k >= int(selection[xory]) and (final_iteration < 0.5):
+        if k >= int(selection[xory]) and not final_iteration:
             final_iteration = True
 
         if each < 100:  # grid line
-            if (grid_valid < 0.5) and (final_iteration < 0.5):  # we just iterated onto a grid line
+            if not grid_valid and not final_iteration:  # we just iterated onto a grid line
                 grid_valid = True
                 grid_array = []
                 store_whitespace = white_array
                 grid_count = grid_count + 1
-            elif (grid_valid < 0.5) and (final_iteration > 0.5):   # for some reason ~x does not work properly
+            elif not grid_valid and final_iteration:   # for some reason ~x does not work properly
                 store_whitespace = white_array
                 break
 
@@ -118,6 +118,7 @@ def slice_grid(xy, horizontal, vertical):
     Simple function that takes a selected point on the image and returns it's sliced row and column
     vectors from the grid images
     """
-    return vertical[int(xy[0]), :], horizontal[:, int(xy[1])]
+    # 1280x720
+    return vertical[int(xy[1]), :], horizontal[:, int(xy[0])]
 
 

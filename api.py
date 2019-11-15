@@ -82,17 +82,20 @@ class Processor(AbstractProcessor):
 
     def get_injection_site_relative_to_point(self, **kwargs):
         #needle_xy_pixel = iv.isolate_needle(self.img_in, self.grid_vertical)
-        if 'index' not in kwargs:
+        if 'index' not in kwargs: # for manual mode
             pt = iv.get_position(self.centers[self.selection], self.grid_horizontal, self.grid_vertical)
         else:
             pt = iv.get_position(self.centers[kwargs['index']], self.grid_horizontal, self.grid_vertical)
+
+        distance = self.get_correction_relative_to_point()
+        print("distance from needle x: {} y: {}".format(distance[0], distance[1]))
         return pt
 
     def get_correction_relative_to_point(self):
         needle_xy_pixel = iv.isolate_needle(self.img_in, self.grid_vertical)
         pt = iv.compare_points(self.centers[self.selection], needle_xy_pixel, self.grid_horizontal, self.grid_vertical)
         # TODO: why to get this to work we had to flip the axes and offset the x by 10 :)
-        realpt = [pt[1]-10, pt[0]]
+        realpt = [pt[1], pt[0]]
         return realpt
 
     def mm_to_steps(self, axis, distance):

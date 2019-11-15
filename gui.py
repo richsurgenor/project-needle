@@ -21,6 +21,7 @@ import time
 import os
 import forwarding_server
 from common import log_image
+from traceback import print_tb
 
 import common
 
@@ -98,7 +99,7 @@ def set_forwarding_settings():
     CROPPED_RESOLUTION_HEIGHT = 1000
     SCALE_FACTOR = 2
 
-FAKE_INPUT_IMG = 0
+FAKE_INPUT_IMG = 1
 if FAKE_INPUT_IMG:
     FAKE_INPUT_IMG_NAME = "./justin_python/justin4.jpg"
     CAMERA_RESOLUTION_WIDTH = 3280
@@ -346,16 +347,20 @@ class QProcessedImageGroupBox(QGroupBox):
             print('User tried to click point before any existed.')
             return
 
-        selected_x = event.pos().x() - HALF_BORDER_SIZE - 4
-        selected_y = event.pos().y() - HALF_BORDER_SIZE - 4
+        selected_x = event.pos().x() - HALF_BORDER_SIZE - 5
+        selected_y = event.pos().y() - HALF_BORDER_SIZE - 5
         mode = self.parent.get_active_mode()
         if mode == MANUAL:
+            # because the top-left corner of the blue reticle is where it actually starts painting,
+            # and we want our point that will be converted to mm to be as accurate as possible..
+            actual_selected_x = selected_x + 5
+            actual_selected_y = selected_y + 5
             # now we scale points up instead... :) at a loss of accuracy :(
             factor_x = float(CAMERA_RESOLUTION_WIDTH) / GUI_IMAGE_SIZE_WIDTH
             factor_y = float(CAMERA_RESOLUTION_HEIGHT) / GUI_IMAGE_SIZE_HEIGHT
 
-            scaled_x = int(round(factor_x * selected_x))
-            scaled_y = int(round(factor_y * selected_y))
+            scaled_x = int(round(factor_x * actual_selected_x))
+            scaled_y = int(round(factor_y * actual_selected_y))
 
             self.points = [(int(selected_x), int(selected_y))]
             self.parent.processor.centers = [(scaled_x, scaled_y)]
@@ -665,12 +670,16 @@ class MainWindow(QMainWindow):
             success = 1
         except IndexError as e:
             # This occurs sometimes.. usually during slice_grid from spookylib...
+            print("{} : {}".format(type(e), e))
+            print_tb(e.__traceback__)
             QMessageBox.information(None, 'Error 1', 'Getting injection site in mm failed.', QMessageBox.Ok)
             if LOGGING and 'index' not in kwargs: # only log if in automatic mode...
                 log_image(self.processor.img_in, "error_1_num")
         except Exception as e:
+
             print("=====Unknown Error getting injection site...=====")
             print("{} : {}".format(type(e), e))
+            print_tb(e.__traceback__)
             if LOGGING and 'index' not in kwargs:
                 log_image(self.processor.img_in, "error_unk_num")
 
@@ -768,7 +777,7 @@ class MainWindow(QMainWindow):
             #QThread.msleep(2000)
             final_selection = self.processor.get_final_selection(numpy.shape(raw), centers)
             if final_selection:
-                self.display_coordinates(centers[final_selection][0],centers[final_selection][1]) # TODO what if no coordinate...
+                self.display_coordinates(self.output_box.points[final_selection][0],self.output_box.points[final_selection][1]) # TODO what if no coordinate...
                 self.draw_processed_img_with_pts(processed_img_scaled, points, final_selection)
                 self.processing_status.showMessage("Processing:   Final selection complete...")
                 self.process_point()
