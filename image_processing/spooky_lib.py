@@ -50,8 +50,8 @@ def interpolate(xy, xslice, yslice):
     """
     # Luckily, the x and y positions actually tell us exactly how far we have to go
     # Truncate these arrays at the x y coordinate for this reason
-    xpos = count_loop(xslice, xy, 1)
-    ypos = count_loop(yslice, xy, 0)
+    xpos = count_loop(xslice, xy, 0)
+    ypos = count_loop(yslice, xy, 1)
     return xpos, ypos
 
 

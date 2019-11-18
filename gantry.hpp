@@ -30,7 +30,7 @@
 #define potpin A2  // analog pin used to connect the potentiometer
 #define ASCII_TO_INT 48 //subtract 48 from an ascii value to make it a decimal value (e.g. 56 -> 8)
 
-#define HEADLESS 1 // where we just go through a basic series of operations with no cmds expected from pi
+#define HEADLESS 0 // where we just go through a basic series of operations with no cmds expected from pi
 
 // Requests from Pi
 #define REQ_ECHO_MSG (int) 		  '0'
@@ -38,12 +38,14 @@
 #define REQ_MOVE_Y_HOME (int) 	  '2'
 #define REQ_MOVE_STEPPER (int) 	  '3'
 #define REQ_GO_TO_WORK (int)      '4' // after pi gives coordinate pi tells to go ahead...
+#define REQ_WAIT_COORDINATE		  '5'
 #define REQ_RESET (int)           '9'
 
 // Commands to Pi
 #define CMD_STATUS_MSG (int)         '0'
 #define CMD_GANTRY_INITIALIZED (int) '1'
 #define CMD_POSITION_UPDATE (int)    '2'
+#define CMD_COORDINATE_RECEIVED (int) '7'
 #define CMD_WAIT_COORDINATE (int)    '8'
 #define CMD_FINISH (int)             '9'
 

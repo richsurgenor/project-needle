@@ -90,7 +90,8 @@ class Processor(AbstractProcessor):
             pt = iv.get_position(self.centers[self.selection], self.grid_horizontal, self.grid_vertical)
         else:
             pt = iv.get_position(self.centers[kwargs['index']], self.grid_horizontal, self.grid_vertical)
-        return pt
+        mypt = [pt[0]-10, pt[1]]
+        return mypt
 
     def get_correction_relative_to_point(self):
         needle_xy_pixel = iv.isolate_needle(self.img_in, self.grid_vertical)
@@ -221,7 +222,7 @@ class GantryMock(threading.Thread):
 if USING_PI:
     SERIAL_INTERFACE = '/dev/ttyACM0'
 else:
-    SERIAL_INTERFACE = '/dev/cu.usbmodem1421'
+    SERIAL_INTERFACE = 'COM3'
 BAUD_RATE = 115200
 
 class AbstractGantryController(threading.Thread):
@@ -362,7 +363,7 @@ class GantryController(AbstractGantryController):
                 elif cmd == CMD_COORDINATE_RECEIVED:
                     print("Arduino received coordinates sent.")
                     print("Telling arduino to go ahead...")
-                    self.gc.send_msg(REQ_GO_TO_WORK)
+                    self.send_msg(REQ_GO_TO_WORK)
 
         print("gantry thread ended...")
 
@@ -385,6 +386,7 @@ class GantryController(AbstractGantryController):
         self.send_msg(REQ_WAIT_COORDINATE, x_str + y_str)
         pass
 
+    """
     def send_msg(self, cmd, msg="", encode=True):
         msg = cmd + msg
         if encode:
@@ -392,20 +394,22 @@ class GantryController(AbstractGantryController):
         else:
             # only encode command
             cmd_enc = cmd.encode('ascii')
-            msg = cmd_enc + msg
+            msg = cmd_enc + msg + "\n"
         self.gantry.write(msg)
+        """
 
-"""
     def send_msg(self, req, msg='', encode=True):
         #TODO: add cond encode
         if len(msg) > 0:
-            mymsg = str(req) + msg
+            mymsg = str(req) + msg + '\n'
             mymsg = mymsg.encode('ascii')
             #mymsg = req + mymsg
         else:
-            mymsg = str(req).encode('ascii')
+            myreq = req + '\n'
+            mymsg = str(myreq).encode('ascii')
+
         self.gantry.write(mymsg)
-"""
+
 
 
 

@@ -39,7 +39,7 @@ void gantry_init(){
 	delay(6000);
 	digitalWrite(4, LOW);
 	myservo.attach(A2);  // attaches the servo on pin A2 to the servo object
-	Serial.println("Gantry Init");
+	//Serial.println("Gantry Init");
 	#if !HEADLESS
 	    status_msg("Initialized Gantry...");
 	    delay(1000);
@@ -532,6 +532,7 @@ int process_req(const char* msg) {
         case REQ_ECHO_MSG:
             status_msg(msg+1); // pass ptr to msg+1 because first byte is cmd byte (this will just echo)
             break;
+		/*
         case REQ_MOVE_Y_HOME:
             status_msg("Moving Y Home...");
             move_y_home();
@@ -539,6 +540,11 @@ int process_req(const char* msg) {
 
             m = wait_for_coordinate();
             break;
+		*/
+		case REQ_WAIT_COORDINATE:
+			decode_coordinate(msg+1);
+			send_cmd(CMD_COORDINATE_RECEIVED);
+			break;
         case REQ_MOVE_STEPPER:
             status_msg("Moving stepper...");
             decode_req_move_stepper(msg+1);
@@ -547,15 +553,14 @@ int process_req(const char* msg) {
             break;
         case REQ_GO_TO_WORK:
             status_msg("Going to work...");
-            move_cap_to_IL();
-            while(digitalRead(LIMIT_Y_HOME_PIN) != HIGH); // i dont think this will work because the gantry will never move after it hits this line... need interrupts on limit switches
-            position_needle();
-            while(digitalRead(LIMIT_Y_HOME_PIN) != HIGH);
-            inject_needle();
-            while(digitalRead(LIMIT_Y_HOME_PIN) != HIGH);
-            pull_needle();
-            while(digitalRead(LIMIT_Y_HOME_PIN) != HIGH);
-            move_back_from_IL(z_depth);
+			move_y_home();
+			z_depth = move_cap_to_IL();
+			//Serial.println("z_depth 3: ");
+			//Serial.println(z_depth);
+			position_needle();
+			inject_needle();
+			pull_needle();
+			move_back_from_IL(z_depth);
             break;
         case REQ_RESET:
             status_msg("Resetting...");
@@ -591,8 +596,11 @@ void decode_coordinate(const char* msg) {
     result[0] = atoi(x);
     result[1] = atoi(y);
 	
+	x_coord = result[0];
+	y_coord = result[1];
+	
 	char output[50];
-    sprintf(output, "x: %d y: %d\n", result[0], result[1]);
+    sprintf(output, "x: %d y: %d", result[0], result[1]);
     status_msg(output);
 }
 /**********************************

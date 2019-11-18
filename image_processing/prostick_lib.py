@@ -415,7 +415,7 @@ def get_position(site, grid_horizontal, grid_vertical):
     REQUIRES THE GRID LIBRARY "SPOOKY_LIB"
     """
     xslice, yslice = grid.slice_grid(site, grid_horizontal, grid_vertical)
-    [xpos, ypos] = grid.interpolate(site, yslice, xslice)
+    [xpos, ypos] = grid.interpolate(site, xslice, yslice)
     return xpos, ypos
 
 """
