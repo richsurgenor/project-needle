@@ -798,7 +798,7 @@ class MainWindow(QMainWindow):
 
     def gantry_start_event(self):
         self.gantry_status.showMessage("Starting Gantry...")
-        self.gc.send_msg(api.REQ_GO_TO_WORK)
+        self.gc.send_coordinate(self.gc.coordinate[0], self.gc.coordinate[1])
 
     def reset_event(self):
         self.gc.send_msg(api.REQ_RESET)

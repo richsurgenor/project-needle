@@ -302,6 +302,7 @@ REQ_RESET = '9'
 CMD_STATUS_MSG = b'0'
 CMD_GANTRY_INITIALIZED = b'1'
 CMD_POSITION_UPDATE = b'2'
+CMD_COORDINATE_RECEIVED = b'7'
 CMD_WAIT_COORDINATE = b'8'
 CMD_FINISH = b'9'
 
@@ -337,13 +338,15 @@ class GantryController(AbstractGantryController):
                 cmd = line[0:1]
 
                 if cmd == CMD_GANTRY_INITIALIZED:
-                    self.msg = 'Moving Y Home...'
-                    self.send_msg(REQ_MOVE_Y_HOME)
+                    #self.msg = 'Moving Y Home...'
+                    # self.send_msg(REQ_MOVE_Y_HOME)'
+                    print("Arduino told gantry that it is initialized...")
                 elif cmd == CMD_STATUS_MSG:
                     msg = line[1:].decode('ascii')
                     print(msg)
                     self.msg = msg
                 elif cmd == CMD_WAIT_COORDINATE:
+                    """
                     print("Received request for coordinate...");
                     self.coordinate_request = True
                     if self.coordinate:
@@ -351,8 +354,14 @@ class GantryController(AbstractGantryController):
                         print("Send coordinate to gantry. x: {} y: {}".format(self.coordinate[0], self.coordinate[1]))
                     else:
                         print("Coordinate was requested but we had no coordinate ready...")
+                    """
+                    pass
                 elif cmd == CMD_POSITION_UPDATE:
                     print("Received position update...")
+                elif cmd == CMD_COORDINATE_RECEIVED:
+                    print("Arduino received coordinates sent.")
+                    print("Telling arduino to go ahead...")
+                    self.gc.send_msg(REQ_GO_TO_WORK)
 
         print("gantry thread ended...")
 
