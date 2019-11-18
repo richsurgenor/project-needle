@@ -12,7 +12,10 @@ from gui import ui_main
 import sys
 import os
 
-USING_PI = os.uname()[4][:3] == 'arm'
+if not os.name == 'ut':
+    USING_PI = os.uname()[4][:3] == 'arm'
+else:
+    USING_PI = False
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == 'forwarder':

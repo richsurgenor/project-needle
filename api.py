@@ -12,7 +12,10 @@ from sklearn.cluster import KMeans
 import numpy as np
 from common import is_numpy_array_avail
 
-USING_PI = os.uname()[4][:3] == 'arm'
+if not os.name == 'ut':
+    USING_PI = os.uname()[4][:3] == 'arm'
+else:
+    USING_PI = False
 
 X_AXIS = 0
 Y_AXIS = 1
