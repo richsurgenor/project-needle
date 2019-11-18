@@ -11,8 +11,9 @@ import image_processing.prostick_lib as iv
 from sklearn.cluster import KMeans
 import numpy as np
 from common import is_numpy_array_avail
+import platform
 
-if not os.name == 'ut':
+if not platform.uname()[0] == 'Windows':
     USING_PI = os.uname()[4][:3] == 'arm'
 else:
     USING_PI = False

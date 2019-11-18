@@ -22,10 +22,14 @@ import os
 import forwarding_server
 from common import log_image
 from traceback import print_tb
+import platform
 
 import common
 
-USING_PI = os.uname()[4][:3] == 'arm'
+if not platform.uname()[0] == 'Windows':
+    USING_PI = os.uname()[4][:3] == 'arm'
+else:
+    USING_PI = False
 
 ###############
 # Non-Settings:
@@ -99,7 +103,7 @@ def set_forwarding_settings():
     CROPPED_RESOLUTION_HEIGHT = 1000
     SCALE_FACTOR = 2
 
-FAKE_INPUT_IMG = 1
+FAKE_INPUT_IMG = 0
 if FAKE_INPUT_IMG:
     FAKE_INPUT_IMG_NAME = "./justin_python/justin4.jpg"
     CAMERA_RESOLUTION_WIDTH = 3280
