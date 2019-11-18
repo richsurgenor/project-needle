@@ -11,8 +11,9 @@ Justin Sutherland, Laura Grace Ayers.
 from gui import ui_main
 import sys
 import os
+import platform
 
-if not os.name == 'ut':
+if not platform.uname()[0] == 'Windows':
     USING_PI = os.uname()[4][:3] == 'arm'
 else:
     USING_PI = False
