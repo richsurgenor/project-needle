@@ -17,7 +17,7 @@
 Servo myservo;  // create servo object to control a servo
 
 static int x_coord, y_coord, z_coord = 0;
-static int z_depth = 0, z_found = 0;
+static int z_found = 0;
 static bool enable = 0;
 
 //String cmd = "";
@@ -36,9 +36,10 @@ void gantry_init(){
 	Serial.begin(115200);
 	pinMode(4, OUTPUT);
 	digitalWrite(4, HIGH);
-	delay(3000);
+	delay(6000);
 	digitalWrite(4, LOW);
 	myservo.attach(A2);  // attaches the servo on pin A2 to the servo object
+	Serial.println("Gantry Init");
 	#if !HEADLESS
 	    status_msg("Initialized Gantry...");
 	    delay(1000);
@@ -74,7 +75,9 @@ void move_y_home(){
 int wait_for_coordinate(){
 
 	int value[10];
+	Serial.flush();
 	while(Serial.available() < 10);
+	Serial.println("Serial values: ");
 	for(int i=0; i<10; i++){
 		value[i] = Serial.read();
 		Serial.write(value[i]);
@@ -101,12 +104,15 @@ int wait_for_coordinate(){
 
 		x_coord = (value[1]*1000)+(value[2]*100)+(value[3]*10)+value[4];
 		y_coord = (value[6]*1000)+(value[7]*100)+(value[8]*10)+value[9];
+		Serial.println("x_coord: ");
 		Serial.println(x_coord);
+		Serial.println("y_coord: ");
 		Serial.println(y_coord);
 	}
 	else{ // this shouldnt be handled here... but by what is taking in the cmds..
 		Serial.write("Invalid packet");
-		Serial.flush();
+		Serial.end();
+		Serial.begin(115200);
 		return(1);
 	}
 	Serial.flush();
@@ -120,15 +126,17 @@ int wait_for_coordinate(){
 *Returns:  void
 *Inputs:   no input
 /********************************************************************/
-void move_cap_to_IL(){
+int move_cap_to_IL(){
 
-	int dir;
+	int dir, z_depth = 0;
 
 	dir = FORWARD;
 	move_stepper(X_AXIS, x_coord, dir);
 	move_stepper(Y_AXIS, y_coord, dir);
-	move_stepper(Z_AXIS, z_coord, dir);
-
+	z_depth = move_stepper(Z_AXIS, z_coord, dir);
+	Serial.println("z_depth 2: ");
+	Serial.println(z_depth);
+	return(z_depth);
 }
 
 /********************************************************************
@@ -249,7 +257,7 @@ void pull_needle(){
 	//delay(3000);                           // waits for the servo to get there
 
 }
-void move_back_from_IL(){	//this will probably only be used for my testing purposes
+void move_back_from_IL(int z_depth){	//this will probably only be used for my testing purposes
 	
 	int y_dist_travelled, x_dist_travelled, steps_to_y_home,
 		y_adjust, x_adjust;
@@ -261,8 +269,12 @@ void move_back_from_IL(){	//this will probably only be used for my testing purpo
 	y_dist_travelled = ( steps_to_y_home + y_coord ) - y_adjust;
 	x_dist_travelled = x_coord + x_adjust;
 	
+	Serial.println("z_depth reading");
 	Serial.println(z_depth);
+	Serial.println("x distance travelled");
 	Serial.println(x_dist_travelled);
+	Serial.println("y_distance_travelled");
+	Serial.println(y_dist_travelled);
 	delay(3000);
 
 	move_stepper(Z_AXIS, z_depth, BACKWARD);			//this is not correct to make z go back home need to account for realignment
@@ -298,6 +310,24 @@ void move_y_back(){
 	steps_to_y_home = mm_to_steps(Y_AXIS, MM_TO_Y_HOME);
 	move_stepper(Y_AXIS, steps_to_y_home, BACKWARD);
 	
+}
+
+void wait_for_begin_cmd(){
+	
+	int value[4];
+	
+	Serial.println("waiting for serial input command '1234' ");
+	while(Serial.available() < 4){
+		
+		for(int i=0; i<4; i++){
+		value[i] = Serial.read();
+		Serial.write(value[i]);
+		}
+		if(value[0] == '1' && value[1] == '2' && value[2] == '3' && value[3] == '4'){
+			break;
+		}
+	}
+	Serial.flush();
 }
 
 /**********************************
@@ -399,12 +429,8 @@ int move_stepper(int axis, int nSteps, int dir){
      */
 	int i,
 		stepPin,
-		steps;
-		
-	steps = nSteps;
-	if(nSteps == z_depth){
-		steps = z_depth;
-	}
+		steps, z_depth;
+	
 	select_direction_pin(dir);
 	stepPin = select_step_pin(axis);
 
@@ -413,9 +439,12 @@ int move_stepper(int axis, int nSteps, int dir){
          * Would like a status msg with the z depth found
          */
 		z_depth = depth_finder();
+		Serial.println("z_depth 1: ");
+		Serial.println(z_depth);
+		return(z_depth);
 	}
 
-	for(i=0; i<steps; i++){
+	for(i=0; i<nSteps; i++){
 		if(enable != 0){
 			return(1);
 		}
@@ -423,7 +452,7 @@ int move_stepper(int axis, int nSteps, int dir){
 		delay(2);
 		digitalWrite(stepPin, LOW);
 		delay(2);
-		Serial.println(i);
+		//Serial.println(i);
 	}
 	return(0);
 }
@@ -437,7 +466,7 @@ int move_stepper(int axis, int nSteps, int dir){
 /********************************************************************/
 int depth_finder(){
 
-	int capSamples[10], debounceCap;
+	int capSamples[10], debounceCap, z_depth = 0;
 	bool capOut;
 
 	capOut = digitalRead (CAP_SENSE_PIN);
@@ -446,6 +475,7 @@ int depth_finder(){
 			//Serial.println(z_depth);
 			capOut = digitalRead(CAP_SENSE_PIN);
 			#if HEADLESS
+			//Serial.println("cap out");
 			Serial.println(capOut);
 			#endif
 			digitalWrite(STEP_PIN_Z, HIGH);
@@ -458,9 +488,11 @@ int depth_finder(){
 		for(int n = 0; n<10; n++){
 			capSamples[n] = digitalRead(CAP_SENSE_PIN);
 			debounceCap += capSamples[n];
-			Serial.println("abort");
+			
 		}
 		if(debounceCap > 7){
+			Serial.println("debounce cap: ");
+			Serial.println(debounceCap);
 			z_found = 1;
 			return(z_depth);
 		}
@@ -495,6 +527,7 @@ void decode_req_move_stepper(const char* msg) {
 int process_req(const char* msg) {
     int cmd = int(msg[0]);
     int m;
+	int z_depth;
     switch(cmd) {
         case REQ_ECHO_MSG:
             status_msg(msg+1); // pass ptr to msg+1 because first byte is cmd byte (this will just echo)
@@ -522,7 +555,7 @@ int process_req(const char* msg) {
             while(digitalRead(LIMIT_Y_HOME_PIN) != HIGH);
             pull_needle();
             while(digitalRead(LIMIT_Y_HOME_PIN) != HIGH);
-            move_back_from_IL();
+            move_back_from_IL(z_depth);
             break;
         case REQ_RESET:
             status_msg("Resetting...");
