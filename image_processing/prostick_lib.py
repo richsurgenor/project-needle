@@ -339,8 +339,8 @@ def grid_mask(grid_vertical, enable_gantry_rails=True):
     #  the x size and divide it by 2 and multiply by 0.222 and +/- that on both ends
     #  (Did I forget to mention that these gantry rails are the bane of my existence?
     if enable_gantry_rails:  # in case Rich comes thru and crops the entire image ( ͡° ͜ʖ ͡°)
-        min_x = min_x + 100
-        max_x = max_x - 100
+        min_x = min_x + 100#760
+        max_x = max_x - 100#880
     gantry_mask = np.ones((sizey, sizex))
     gantry_mask[:, 0:min_x] = 0
     gantry_mask[:, max_x:sizex] = 0

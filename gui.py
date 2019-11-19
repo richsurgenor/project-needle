@@ -44,7 +44,16 @@ BORDER_SIZE = 10
 HALF_BORDER_SIZE = BORDER_SIZE/2
 FPS = 10
 
-STILL_IMAGE_CAPTURE = 1
+STILL_IMAGE_CAPTURE = 0 # broken, don't use.
+
+"""
+To see how much clipping see prostick_lib.py
+
+Allows cropping what the selection algo sees without cropping the actual picture.
+disadvantage: isn't done before preprocessing..
+"""
+CLIP_RAILS_THROUGH_NUMPY = False
+
 
 if USING_PI:
     from pivideostream import PiVideoStream
@@ -99,13 +108,35 @@ def set_forwarding_settings():
     MOCK_MODE_GANTRY = 1
 
     SAVE_RAWIMG = 1
-    CAMERA_RESOLUTION_WIDTH = 1000
-    CAMERA_RESOLUTION_HEIGHT = 1000
-    GUI_IMAGE_SIZE_WIDTH = CAMERA_RESOLUTION_WIDTH/2
-    GUI_IMAGE_SIZE_HEIGHT = CAMERA_RESOLUTION_HEIGHT/2
+
+    """
+    Note that on a full size 3280x2464 img that the gantry rails are approx:
+    min_x = min_x + 760
+    max_x = max_x - 1020
+    
+    So approx crop would be: 1500x2464
+    
+    """
+
+    CAMERA_RESOLUTION_WIDTH = 3280 #1000
+    CAMERA_RESOLUTION_HEIGHT = 2464 #1000
+    #GUI_IMAGE_SIZE_WIDTH = CAMERA_RESOLUTION_WIDTH/4
+    #GUI_IMAGE_SIZE_HEIGHT = CAMERA_RESOLUTION_HEIGHT/4
+
+    # one problem with cropping height is we only want to crop the max y
+    # TODO: make cropping with y only for max_y (so bottom isnt cropped)
     CROPPING_ENABLED = 0
-    CROPPED_RESOLUTION_WIDTH = 1000
-    CROPPED_RESOLUTION_HEIGHT = 1000
+    CROPPED_RESOLUTION_WIDTH = 1500
+    CROPPED_RESOLUTION_HEIGHT = 1500 # clip height because uneven distribution of light
+
+    if not CROPPING_ENABLED:
+        factor = 4
+        GUI_IMAGE_SIZE_WIDTH = CAMERA_RESOLUTION_WIDTH / factor
+        GUI_IMAGE_SIZE_HEIGHT = CAMERA_RESOLUTION_HEIGHT / factor
+    else:
+        factor = 2
+        GUI_IMAGE_SIZE_WIDTH = CROPPED_RESOLUTION_WIDTH / factor
+        GUI_IMAGE_SIZE_HEIGHT = CROPPED_RESOLUTION_HEIGHT / factor
 
 FAKE_INPUT_IMG = 0
 if FAKE_INPUT_IMG:
@@ -163,9 +194,9 @@ def get_processor():
         return api.ProcessorMock()
     else:
         if CROPPING_ENABLED:
-            return api.Processor(CROPPED_RESOLUTION_WIDTH, CROPPED_RESOLUTION_HEIGHT)
+            return api.Processor(CROPPED_RESOLUTION_WIDTH, CROPPED_RESOLUTION_HEIGHT, clip_rails_numpy=CLIP_RAILS_THROUGH_NUMPY)
         else:
-            return api.Processor(CAMERA_RESOLUTION_WIDTH, CAMERA_RESOLUTION_HEIGHT)
+            return api.Processor(CAMERA_RESOLUTION_WIDTH, CAMERA_RESOLUTION_HEIGHT, clip_rails_numpy=CLIP_RAILS_THROUGH_NUMPY)
 
 def get_controller():
     if MOCK_MODE_GANTRY:
@@ -735,7 +766,7 @@ class MainWindow(QMainWindow):
         #if CROPPING_ENABLED:
         #    raw = common.cropND(raw, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
         #grayimg = cv2.imread("justin_python/justin4.jpg", 0)
-        grayimg = cv2.cvtColor(raw, cv2.COLOR_BGR2GRAY) # TODO: may need to be different per camera
+        grayimg = cv2.cvtColor(raw, cv2.COLOR_RGB2GRAY) # TODO: may need to be different per camera
         clahe_img = self.processor.apply_clahe(grayimg)
         # we gray now...
         height, width = clahe_img.shape
