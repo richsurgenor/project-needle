@@ -9,6 +9,9 @@ import struct
 import threading
 import picamera
 
+RESOLUTION = (3280,2464) #(1000, 1000)
+PORT = 8002
+USE_VIDEO_PORT = False
 
 def streams(pool, pool_lock):
     while True:
@@ -33,7 +36,7 @@ class Forwarder:
 
         try:
             self.client_socket = socket.socket()
-            self.client_socket.connect((pinetworkvideostream.IP, 8002))
+            self.client_socket.connect((pinetworkvideostream.IP, PORT))
             self.connection = self.client_socket.makefile('wb')
 
             self.connection_lock = threading.Lock()
@@ -47,11 +50,11 @@ class Forwarder:
                     self.pool.append(ImageStreamer(self.connection, self.client_socket, self.pool, self.connection_lock, self.pool_lock))
                     self.pool[i].id = i
                     print("Added stream {}".format(str(i)))
-                camera.resolution = (1000, 1000)
+                camera.resolution = RESOLUTION
                 camera.framerate = 10  # should be raised??
                 camera.awb_mode = 'tungsten'
                 time.sleep(2)
-                camera.capture_sequence(streams(self.pool, self.pool_lock), 'jpeg', use_video_port=True)
+                camera.capture_sequence(streams(self.pool, self.pool_lock), 'jpeg', use_video_port=USE_VIDEO_PORT)
 
             '''
             # Shut down the streamers in an orderly fashion
