@@ -56,6 +56,11 @@ class Processor(AbstractProcessor):
                                                                        'assets/coord_static_y.png')
         self.grid_horizontal = cv2.resize(self.grid_horizontal, (camera_width, camera_height))
         self.grid_vertical = cv2.resize(self.grid_vertical, (camera_width, camera_height))
+
+        #save grids debug
+        #cv2.imwrite('gui-gridhorizontal.jpg', self.grid_horizontal)
+        #cv2.imwrite('gui-gridvertical.jpg', self.grid_vertical)
+
         self.centers = None
         self.selection = None
 

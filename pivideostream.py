@@ -12,6 +12,7 @@ from picamera.array import PiRGBArray
 from picamera import PiCamera
 from threading import Thread
 import cv2
+import numpy as np
 
 class PiVideoStream:
 	def __init__(self, resolution=(640, 368), framerate=32, **kwargs):
@@ -59,6 +60,11 @@ class PiVideoStream:
 				self.rawCapture.close()
 				self.camera.close()
 				return
+
+	def capture_still_image(self):
+		output = np.empty((2464, 3280, 3), dtype=np.uint8)
+		self.camera.capture(output, 'rgb')
+		return output
 
 	def get_frame(self):
 		# return the frame most recently read

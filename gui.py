@@ -44,6 +44,8 @@ BORDER_SIZE = 10
 HALF_BORDER_SIZE = BORDER_SIZE/2
 FPS = 10
 
+STILL_IMAGE_CAPTURE = 1
+
 if USING_PI:
     from pivideostream import PiVideoStream
 
@@ -64,7 +66,6 @@ if USING_PI:
 
     GUI_IMAGE_SIZE_WIDTH = 540  # 640
     GUI_IMAGE_SIZE_HEIGHT = 540  # 368
-    SCALE_FACTOR = 2  # TODO: scale factor could be auto-calced..
 
 else:
     DARK_THEME = 0
@@ -84,7 +85,6 @@ else:
 
     GUI_IMAGE_SIZE_WIDTH = 640
     GUI_IMAGE_SIZE_HEIGHT = 360
-    SCALE_FACTOR = 2  # TODO: scale factor could be auto-calced..
 
 def set_forwarding_settings():
     global CAMERA_RESOLUTION_WIDTH,CAMERA_RESOLUTION_HEIGHT, \
@@ -96,7 +96,7 @@ def set_forwarding_settings():
 
     GANTRY_ON = 1
     MOCK_MODE_IMAGE_PROCESSING = 0
-    MOCK_MODE_GANTRY = 0
+    MOCK_MODE_GANTRY = 1
 
     SAVE_RAWIMG = 1
     CAMERA_RESOLUTION_WIDTH = 1000
@@ -106,7 +106,6 @@ def set_forwarding_settings():
     CROPPING_ENABLED = 0
     CROPPED_RESOLUTION_WIDTH = 1000
     CROPPED_RESOLUTION_HEIGHT = 1000
-    SCALE_FACTOR = 2
 
 FAKE_INPUT_IMG = 0
 if FAKE_INPUT_IMG:
@@ -118,7 +117,6 @@ if FAKE_INPUT_IMG:
     CROPPING_ENABLED = 0
     CROPPED_RESOLUTION_WIDTH = 2200
     CROPPED_RESOLUTION_HEIGHT = 2464
-    SCALE_FACTOR = 4
 
 def ui_main(fwd=False):
     """
@@ -492,6 +490,8 @@ class QModeMenuWidget(QWidget):
 
     def mode_change_event(self, button):
         self.parent.output_box.reset()
+        self.parent.gantry_status.showMessage("Gantry:   ")
+        self.parent.processing_status.showMessage("Processing:   ")
         pass
 
 
@@ -717,8 +717,11 @@ class MainWindow(QMainWindow):
         self.processor.centers = None
         self.processor.selection = None
 
-        raw = self.feed.rawframe
-        raw = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB)
+        if STILL_IMAGE_CAPTURE: # should only be on if picamera
+            raw = self.camera.capture_still_image()
+        else:
+            raw = self.feed.rawframe
+        #raw = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB)
         #if SAVE_RAWIMG:
         cv2.imwrite('gui-rawimg.jpg', raw)
         height, width, channels = raw.shape
