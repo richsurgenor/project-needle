@@ -12,6 +12,8 @@ from gui import ui_main
 import sys
 import os
 import platform
+import time
+
 
 if not platform.uname()[0] == 'Windows':
     USING_PI = os.uname()[4][:3] == 'arm'
@@ -24,6 +26,19 @@ if __name__ == "__main__":
             print("Initializing with forwarding client (Pi)...")
             import forwarding
             fwder = forwarding.Forwarder()
+            while True:
+                if not fwder or fwder.closed:
+                    if fwder:
+                        del fwder
+                        fwder = None
+                    print("Attempting to recreate connection..")
+                    try:
+                        fwder = forwarding.Forwarder()
+                    except Exception as e:
+                        print("failed..")
+                    time.sleep(2)
+                pass
+
         else:
             print("Initializing with forwarding server (PC)...")
             ui_main(True)
