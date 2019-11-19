@@ -50,7 +50,7 @@ class Processor(AbstractProcessor):
     image processing libraries.
     """
 
-    def __init__(self, camera_width, camera_height):
+    def __init__(self, camera_width, camera_height, clip_rails_numpy=False):
         self.img_in = None
         self.grid_horizontal, self.grid_vertical = iv.initialize_grids('assets/coord_static_x_revised.png',
                                                                        'assets/coord_static_y.png')
@@ -63,6 +63,7 @@ class Processor(AbstractProcessor):
 
         self.centers = None
         self.selection = None
+        self.clip_rails_numpy = clip_rails_numpy
 
     def apply_clahe(self, image):
         self.img_in = image
@@ -82,7 +83,7 @@ class Processor(AbstractProcessor):
         return masked
 
     def get_optimum_points(self, preprocessed_img):
-        self.centers = iv.get_centers(preprocessed_img, 40, self.grid_vertical, True, False)
+        self.centers = iv.get_centers(preprocessed_img, 40, self.grid_vertical, True, self.clip_rails_numpy)
         return self.centers
 
     def get_final_selection(self, size, centers):
