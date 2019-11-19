@@ -22,9 +22,10 @@ if __name__ == "__main__":
             import forwarding
             fwder = forwarding.Forwarder()
             while True:
-                if fwder.closed:
-                    del fwder
-                    fwder = None
+                if not fwder or fwder.closed:
+                    if fwder:
+                        del fwder
+                        fwder = None
                     print("Attempting to recreate connection..")
                     try:
                         fwder = forwarding.Forwarder()
