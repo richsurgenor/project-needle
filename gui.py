@@ -47,12 +47,11 @@ FPS = 10
 STILL_IMAGE_CAPTURE = 0 # broken, don't use.
 
 """
-To see how much clipping see prostick_lib.py
+To see how much clipping when CLIP_RAILS_THROUGH_NUMPY see prostick_lib.py
 
 Allows cropping what the selection algo sees without cropping the actual picture.
 disadvantage: isn't done before preprocessing..
 """
-CLIP_RAILS_THROUGH_NUMPY = False
 
 
 if USING_PI:
@@ -76,6 +75,8 @@ if USING_PI:
     GUI_IMAGE_SIZE_WIDTH = 540  # 640
     GUI_IMAGE_SIZE_HEIGHT = 540  # 368
 
+    CLIP_RAILS_THROUGH_NUMPY = False
+
 else:
     DARK_THEME = 0
     SAVE_RAWIMG = 0
@@ -95,17 +96,20 @@ else:
     GUI_IMAGE_SIZE_WIDTH = 640
     GUI_IMAGE_SIZE_HEIGHT = 360
 
+    CLIP_RAILS_THROUGH_NUMPY = False
+
 def set_forwarding_settings():
     global CAMERA_RESOLUTION_WIDTH,CAMERA_RESOLUTION_HEIGHT, \
     GUI_IMAGE_SIZE_WIDTH,GUI_IMAGE_SIZE_HEIGHT,CROPPING_ENABLED, \
     CROPPED_RESOLUTION_WIDTH,CROPPED_RESOLUTION_HEIGHT,SCALE_FACTOR, \
-    LOGGING, SAVE_RAWIMG, GANTRY_ON, MOCK_MODE_GANTRY, MOCK_MODE_IMAGE_PROCESSING
+    LOGGING, SAVE_RAWIMG, GANTRY_ON, MOCK_MODE_GANTRY, MOCK_MODE_IMAGE_PROCESSING, \
+    CLIP_RAILS_THROUGH_NUMPY
 
     LOGGING = 1
 
     GANTRY_ON = 1
     MOCK_MODE_IMAGE_PROCESSING = 0
-    MOCK_MODE_GANTRY = 1
+    MOCK_MODE_GANTRY = 0
 
     SAVE_RAWIMG = 1
 
@@ -118,16 +122,16 @@ def set_forwarding_settings():
     
     """
 
-    CAMERA_RESOLUTION_WIDTH = 3280 #1000
-    CAMERA_RESOLUTION_HEIGHT = 2464 #1000
+    CAMERA_RESOLUTION_WIDTH = 1000 #3280#
+    CAMERA_RESOLUTION_HEIGHT = 1000 #2464#
     #GUI_IMAGE_SIZE_WIDTH = CAMERA_RESOLUTION_WIDTH/4
     #GUI_IMAGE_SIZE_HEIGHT = CAMERA_RESOLUTION_HEIGHT/4
 
     # one problem with cropping height is we only want to crop the max y
     # TODO: make cropping with y only for max_y (so bottom isnt cropped)
     CROPPING_ENABLED = 0
-    CROPPED_RESOLUTION_WIDTH = 1500
-    CROPPED_RESOLUTION_HEIGHT = 1500 # clip height because uneven distribution of light
+    CROPPED_RESOLUTION_WIDTH = 840 #1500
+    CROPPED_RESOLUTION_HEIGHT = 1000 # clip height because uneven distribution of light
 
     if not CROPPING_ENABLED:
         factor = 4
@@ -138,16 +142,19 @@ def set_forwarding_settings():
         GUI_IMAGE_SIZE_WIDTH = CROPPED_RESOLUTION_WIDTH / factor
         GUI_IMAGE_SIZE_HEIGHT = CROPPED_RESOLUTION_HEIGHT / factor
 
+    CLIP_RAILS_THROUGH_NUMPY = True
+
 FAKE_INPUT_IMG = 0
 if FAKE_INPUT_IMG:
-    FAKE_INPUT_IMG_NAME = "./justin_python/justin4.jpg"
-    CAMERA_RESOLUTION_WIDTH = 3280
-    CAMERA_RESOLUTION_HEIGHT = 2464
-    GUI_IMAGE_SIZE_WIDTH = 820 #550  # 640
-    GUI_IMAGE_SIZE_HEIGHT = 616  # 368
+    FAKE_INPUT_IMG_NAME = "./test_images/rich.jpg"
+    CAMERA_RESOLUTION_WIDTH = 1000#3280
+    CAMERA_RESOLUTION_HEIGHT = 1000#2464
+    GUI_IMAGE_SIZE_WIDTH = 500 #550  # 640
+    GUI_IMAGE_SIZE_HEIGHT = 500  # 368
     CROPPING_ENABLED = 0
     CROPPED_RESOLUTION_WIDTH = 2200
     CROPPED_RESOLUTION_HEIGHT = 2464
+    CLIP_RAILS_THROUGH_NUMPY=False
 
 def ui_main(fwd=False):
     """
@@ -210,10 +217,10 @@ class FakeCamera:
         # self.rawframe = cv2.resize(self.rawframe, dsize=(GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT), interpolation=cv2.INTER_CUBIC)
         # cv2.imwrite('testproc.jpg', self.rawframe)
         self.opened = False
-        self.fakepic = cv2.cvtColor(self.rawframe, cv2.COLOR_RGB2BGR)
+        #self.fakepic = cv2.cvtColor(self.rawframe, cv2.COLOR_RGB2BGR)
 
     def get_frame(self):
-        return self.fakepic
+        return self.rawframe
 
     def start(self):
         self.opened = True
@@ -242,7 +249,7 @@ class Camera:
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
 
-    def get_frame(self, rbg2rgb=True):
+    def get_frame(self, rbg2rgb=False):
         ret, frame = self.cap.read()
         if rbg2rgb:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -318,7 +325,8 @@ class PreviewThread(QThread):
 
         #savemat('data.mat', {'frame': frame, 'framee': framee})
         #img = cv2.resize(self.rawframe, (GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT))
-        img = QImage(numpy.asarray(self.rawframe, order='C'), self.rawframe.shape[1], self.rawframe.shape[0], QImage.Format_RGB888)
+        rawframe_conv = cv2.cvtColor(self.rawframe, cv2.COLOR_BGR2RGB)
+        img = QImage(numpy.asarray(rawframe_conv, order='C'), rawframe_conv.shape[1], rawframe_conv.shape[0], QImage.Format_RGB888)
 
         pix = QPixmap.fromImage(img)
 
@@ -725,6 +733,8 @@ class MainWindow(QMainWindow):
         if success:
             print("Coordinate in mm: x: {} y: {}".format(injection_site_in_mm[0], injection_site_in_mm[1]))
             self.gc.coordinate = self.processor.get_injection_site_in_steps_relative_to_point(injection_site_in_mm)
+            # send coordinate
+            self.gc.send_coordinate(self.gc.coordinate[0], self.gc.coordinate[1])
             self.display_injection_site(injection_site_in_mm[0], injection_site_in_mm[1], self.gc.coordinate[0],
                                         self.gc.coordinate[1])
             QCoreApplication.processEvents()
@@ -752,6 +762,8 @@ class MainWindow(QMainWindow):
             raw = self.camera.capture_still_image()
         else:
             raw = self.feed.rawframe
+        # curious enough cvting to correct colors seems to throw off pts
+        #if not USING_PI and not FORWARDING:
         #raw = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB)
         #if SAVE_RAWIMG:
         cv2.imwrite('gui-rawimg.jpg', raw)
@@ -763,8 +775,6 @@ class MainWindow(QMainWindow):
         self.draw_output_img(processed_img_scaled)
         QCoreApplication.processEvents()
         self.processing_status.showMessage("Processing:   Applying thresholding...")
-        #if CROPPING_ENABLED:
-        #    raw = common.cropND(raw, (CROPPED_RESOLUTION_HEIGHT, CROPPED_RESOLUTION_WIDTH))
         #grayimg = cv2.imread("justin_python/justin4.jpg", 0)
         grayimg = cv2.cvtColor(raw, cv2.COLOR_RGB2GRAY) # TODO: may need to be different per camera
         clahe_img = self.processor.apply_clahe(grayimg)
@@ -781,7 +791,7 @@ class MainWindow(QMainWindow):
         self.output_box.repaint()
         QCoreApplication.processEvents()
         self.processing_status.showMessage("Processing:   Applying mask...")
-        #QThread.msleep(1000)
+        QThread.msleep(1000)
         thresholding_img = self.processor.apply_thresholding(clahe_img)
         height, width = thresholding_img.shape
         bytes_per_line = width
@@ -841,7 +851,7 @@ class MainWindow(QMainWindow):
 
     def gantry_start_event(self):
         self.gantry_status.showMessage("Starting Gantry...")
-        self.gc.send_coordinate(self.gc.coordinate[0], self.gc.coordinate[1])
+        self.gc.send_msg(api.REQ_GO_TO_WORK)
 
     def reset_event(self):
         self.gc.send_msg(api.REQ_RESET)

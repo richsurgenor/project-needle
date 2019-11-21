@@ -17,6 +17,27 @@ def oh_no():
     return "Too Spooky for Jackson"
 
 
+def test_grid(img):
+    """
+    :return: 0
+    Function takes a predefined set of pixel coordinates and finds the mm coordinates.
+    IF they do not match the measurements by hand within an acceptable margin of error,
+    the test fails.
+    """
+    margin = 0.01
+    grid_horizontal, grid_vertical = iv.initialize_grids(img, 'grid_ver.jpg', 'grid_hor.jpg')
+    set_pixel = [[457, 525], [531, 350], [729, 627], [231, 746]]
+    set_mm = [[75, 50], [87.5, 17.5], [122.5, 67.5], [37.5, 87.5]]
+    i = 0
+    for each in set_pixel:
+        y, x = iv.get_position(each, grid_horizontal, grid_vertical)
+        print("Actual mm position: " + str(set_mm[i]))
+        print("Calculated mm position: " + str(x) + " mm horizontal, " + str(y) + " mm vertical")
+        i = i + 1
+
+    return 0
+
+
 def process_grid(img_in, threshold):
     """
     :param img_in: image taken by the Raspberry Pi camera
@@ -33,9 +54,9 @@ def process_grid(img_in, threshold):
     5) Return as an image array. We want to get column vectors and row vectors from it so we need to keep it in
         that format.
     """
-    clahe_img = iv.apply_clahe(img_in, 5.0, (8, 8))
+    clahe_img = iv.apply_clahe(img_in, 5.0, (2, 2))
     threshold = int(255*threshold)
-    adapt_mean_th = iv.adapt_thresh(clahe_img, 255, threshold, 20)
+    adapt_mean_th = iv.adapt_thresh(clahe_img, 255, threshold, 15)
     # pic_array = cv2.medianBlur(adapt_mean_th, 7)
     pic_array = adapt_mean_th
     return np.array(pic_array)
@@ -50,8 +71,8 @@ def interpolate(xy, xslice, yslice):
     """
     # Luckily, the x and y positions actually tell us exactly how far we have to go
     # Truncate these arrays at the x y coordinate for this reason
-    xpos = count_loop(xslice, xy, 0)
-    ypos = count_loop(yslice, xy, 1)
+    xpos = count_loop(xslice, xy, 1)
+    ypos = count_loop(yslice, xy, 0)
     return xpos, ypos
 
 
@@ -101,7 +122,7 @@ def count_loop(array, selection, xory):
     if len(store_whitespace) > 0.5:
         white_previous = min(store_whitespace)
         white_final = max(store_whitespace)
-        interpolated_value = 5*grid_count - (selection[xory]-white_previous)/(selection[xory]-white_final)
+        interpolated_value = 5*grid_count + 5*(white_previous-selection[xory])/(white_previous-white_final)
     else:
         interpolated_value = 5*grid_count
 
@@ -118,6 +139,6 @@ def slice_grid(xy, horizontal, vertical):
     Simple function that takes a selected point on the image and returns it's sliced row and column
     vectors from the grid images
     """
-    return vertical[int(xy[0]), :], horizontal[:, int(xy[1])]
+    return vertical[int(xy[1]), :], horizontal[:, int(xy[0])]
 
 

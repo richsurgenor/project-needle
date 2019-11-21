@@ -9,7 +9,7 @@ import struct
 import threading
 import picamera
 
-RESOLUTION = (3280,2464) #(1000, 1000)
+RESOLUTION = (1000, 1000)#(3280,2464)
 PORT = 8002
 USE_VIDEO_PORT = False
 

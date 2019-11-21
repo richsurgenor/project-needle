@@ -69,7 +69,7 @@ class ForwardingCamera(threading.Thread):
         if self.frame:
             image = numpy.array(self.frame)
             #note if png format is used then conversion is needed...
-            #image = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             return image
         else:
             return None

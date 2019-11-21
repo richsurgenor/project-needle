@@ -18,8 +18,14 @@ from matplotlib import pyplot as plt
 
 if __name__ == "__main__":
     # Read in the image
-    grid_horizontal, grid_vertical = iv.initialize_grids('assets/coord_static_x_revised.png', 'assets/coord_static_y.png')
     img_in = cv2.imread('justin_python/justin4.jpg', 0)
+    #grid_horizontal, grid_vertical = iv.initialize_grids(img_in, 'assets/grid_ver_smol.jpg',
+    #                                                     'assets/grid_hor_smol.jpg')
+    target_res = np.shape(img_in)
+    horizontal = cv2.imread('assets/coord_static_x_revised.png', 0)
+    vertical = cv2.imread('assets/coord_static_y.png', 0)
+    grid_horizontal, grid_vertical = iv.initialize_grids(target_res, horizontal, vertical)
+
     start = time.time()
     clusters = iv.get_centers(img_in, 40, grid_vertical)
     selection = iv.final_selection(clusters, np.shape(img_in))
@@ -30,9 +36,11 @@ if __name__ == "__main__":
     # Now let's test the grid system and see if we can get a x mm and y mm command!
     # Get the x y slices from the grids
     inject_x, inject_y = iv.get_position(selection, grid_horizontal, grid_vertical)
-    needle_xy_pixel = iv.isolate_needle(img_in, grid_vertical)
-    visual.plot_needle(img_in, needle_xy_pixel)
+    print("Target at x: " + str(inject_x) + " mm")
+    print("Target as y: " + str(inject_y) + " mm")
+    #needle_xy_pixel = iv.isolate_needle(img_in, grid_vertical)
+    #visual.plot_needle(img_in, needle_xy_pixel)
     # Now let's test the comparison tool using the grid functionality
-    correction = iv.compare_points(selection, needle_xy_pixel, grid_horizontal, grid_vertical)
-    print("Go " + str(correction[0]) + " mm away from the current needle horizontal location.")
-    print("Go " + str(correction[1]) + " mm down from the current needle vertical location.")
+    #correction = iv.compare_points(selection, needle_xy_pixel, grid_horizontal, grid_vertical)
+    #print("Go " + str(correction[0]) + " mm away from the current needle horizontal location.")
+    #print("Go " + str(correction[1]) + " mm down from the current needle vertical location.")

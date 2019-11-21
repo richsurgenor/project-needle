@@ -14,8 +14,10 @@ from common import is_numpy_array_avail
 import platform
 
 if not platform.uname()[0] == 'Windows':
+    USING_WINDOWS = False
     USING_PI = os.uname()[4][:3] == 'arm'
 else:
+    USING_WINDOWS = True
     USING_PI = False
 
 X_AXIS = 0
@@ -52,10 +54,12 @@ class Processor(AbstractProcessor):
 
     def __init__(self, camera_width, camera_height, clip_rails_numpy=False):
         self.img_in = None
-        self.grid_horizontal, self.grid_vertical = iv.initialize_grids('assets/coord_static_x_revised.png',
-                                                                       'assets/coord_static_y.png')
-        self.grid_horizontal = cv2.resize(self.grid_horizontal, (camera_width, camera_height))
-        self.grid_vertical = cv2.resize(self.grid_vertical, (camera_width, camera_height))
+        horizontal = cv2.imread('assets/coord_static_x_revised.png', 0)
+        vertical = cv2.imread('assets/coord_static_y.png', 0)
+        self.grid_horizontal, self.grid_vertical = iv.initialize_grids((camera_height, camera_width), horizontal,
+                                                                       vertical)
+        #self.grid_horizontal = cv2.resize(self.grid_horizontal, (camera_width, camera_height))
+        #self.grid_vertical = cv2.resize(self.grid_vertical, (camera_width, camera_height))
 
         #save grids debug
         #cv2.imwrite('gui-gridhorizontal.jpg', self.grid_horizontal)
@@ -67,7 +71,7 @@ class Processor(AbstractProcessor):
 
     def apply_clahe(self, image):
         self.img_in = image
-        return iv.apply_clahe(self.img_in, 5.0, (8, 8))
+        return iv.apply_clahe(self.img_in, 7.0, (40, 40))
 
     def apply_thresholding(self, clahe_img):
         """
@@ -77,9 +81,13 @@ class Processor(AbstractProcessor):
         """
         mask = iv.create_mask(self.img_in, 100, 255)
         threshold = int(255 * 0.5)
-        adapt_mean_th = iv.adapt_thresh(clahe_img, 255, threshold, 20)
-        masked = iv.apply_mask(adapt_mean_th, mask)
-        masked = masked.astype(np.uint8)
+        low = iv.adapt_thresh(clahe_img, 255, threshold, 10)
+        high = iv.adapt_thresh(clahe_img, 255, threshold, 20)  # we are creating a bandpass filter here
+        masked_low = iv.apply_mask(low, mask)
+        masked_high = iv.apply_mask(high, mask)
+        masked_img = masked_low - np.logical_and(masked_low, masked_high)
+        cv2.imwrite('wtf.jpg', masked_img)
+        masked = masked_img.astype(np.uint8)
         return masked
 
     def get_optimum_points(self, preprocessed_img):
@@ -96,7 +104,7 @@ class Processor(AbstractProcessor):
             pt = iv.get_position(self.centers[self.selection], self.grid_horizontal, self.grid_vertical)
         else:
             pt = iv.get_position(self.centers[kwargs['index']], self.grid_horizontal, self.grid_vertical)
-        mypt = [pt[0]-10, pt[1]]
+        mypt = [pt[1], pt[0]]
         return mypt
 
     def get_correction_relative_to_point(self):
@@ -114,12 +122,12 @@ class Processor(AbstractProcessor):
         elif axis == Z_AXIS:
             screw_lead_axis = SCREW_LEAD_Z;
 
-        totalSteps = float(STEPS_PER_REVOLUTION) * (1 / float(screw_lead_axis) * (float(distance + 1)))
+        totalSteps = float(STEPS_PER_REVOLUTION) * (1 / float(screw_lead_axis) * (float(distance)))
         return int(round(totalSteps))
 
     def get_injection_site_in_steps_relative_to_point(self, injection_site_in_mm):
-        x_steps = self.mm_to_steps(X_AXIS, injection_site_in_mm[0])
-        y_steps = self.mm_to_steps(Y_AXIS, injection_site_in_mm[1])
+        x_steps = self.mm_to_steps(X_AXIS, injection_site_in_mm[0]) - 2225 # gantry overextends bc capacitive sensor
+        y_steps = self.mm_to_steps(Y_AXIS, injection_site_in_mm[1]) + 237 # marker a little further out
         return [x_steps, y_steps]
 
 def get_direction(current, target):
@@ -227,8 +235,10 @@ class GantryMock(threading.Thread):
 
 if USING_PI:
     SERIAL_INTERFACE = '/dev/ttyACM0'
-else:
+elif USING_WINDOWS:
     SERIAL_INTERFACE = 'COM3'
+else: #using mac?
+    SERIAL_INTERFACE = '/dev/cu.usbmodem1421'
 BAUD_RATE = 115200
 
 class AbstractGantryController(threading.Thread):
@@ -348,7 +358,7 @@ class GantryController(AbstractGantryController):
                 if cmd == CMD_GANTRY_INITIALIZED:
                     #self.msg = 'Moving Y Home...'
                     # self.send_msg(REQ_MOVE_Y_HOME)'
-                    print("Arduino told gantry that it is initialized...")
+                    print("Arduino told gantry controller (gui) that it is initialized...")
                 elif cmd == CMD_STATUS_MSG:
                     msg = line[1:].decode('ascii')
                     print(msg)
@@ -368,8 +378,7 @@ class GantryController(AbstractGantryController):
                     print("Received position update...")
                 elif cmd == CMD_COORDINATE_RECEIVED:
                     print("Arduino received coordinates sent.")
-                    print("Telling arduino to go ahead...")
-                    self.send_msg(REQ_GO_TO_WORK)
+                    print("Pending gantry start...")
 
         print("gantry thread ended...")
 

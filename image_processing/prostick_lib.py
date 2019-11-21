@@ -13,6 +13,7 @@
     library titled "spooky"
 """
 
+from sklearn.cluster import DBSCAN
 from sklearn.cluster import MiniBatchKMeans
 import math
 from pyclustering.cluster.kmedoids import kmedoids
@@ -23,20 +24,59 @@ import scipy.ndimage
 import image_processing.spooky_lib as grid
 from matplotlib import pyplot as plt
 
-
-def get_centers(image, nclusters, grid, preprocessed=False, enable_gantry_rails=True):
+def get_centers(image, nclusters, grid_horizontal, preprocessed=False, enable_gantry_rails=True):
     """
     :param image: image taken by the Raspberry Pi camera
     :param nclusters: number of clusters to run the algorithm with; make sure this is divisible by 2
-    :param grid: grid img
+    :param grid_horizontal:
     :return: kmean clusters (for plotting purposes)
     """
-    mask_grid = grid_mask(grid, enable_gantry_rails)
+    image_size = np.shape(image)
+    mask_grid = grid_mask(grid_horizontal, enable_gantry_rails)
     pic_array_1, pic_array_2 = process_selection_image(image, 0.5, mask_grid, preprocessed)
     centers_first = execute_kmean(pic_array_1, int(nclusters/2))
     centers_second = execute_kmean(pic_array_2, int(nclusters/2))
     centers = np.concatenate((centers_first, centers_second), axis=0)
     return centers
+
+
+def test_db(image, grid_horizontal):
+    """
+    For testing DB scan
+    """
+    image_size = np.shape(image)
+    mask_grid = grid_mask(grid_horizontal)
+    pic_array_1, pic_array_2 = process_selection_image(image, 0.5, mask_grid)
+    centers_first = execute_kmean(pic_array_1, int(300/2))
+    centers_second = execute_kmean(pic_array_2, int(300/2))
+    centers = np.concatenate((pic_array_1, pic_array_2), axis=0)
+    X = centers
+    db = execute_DBSCAN(X, 10, 10)
+    core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
+    core_samples_mask[db.core_sample_indices_] = True
+    labels = db.labels_
+    n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
+    n_noise_ = list(labels).count(-1)
+    unique_labels = set(labels)
+    colors = [plt.cm.Spectral(each)
+              for each in np.linspace(0, 1, len(unique_labels))]
+    for k, col in zip(unique_labels, colors):
+        if k == -1:
+            # Black used for noise.
+            col = [0, 0, 0, 1]
+
+        class_member_mask = (labels == k)
+
+        xy = X[class_member_mask & core_samples_mask]
+        plt.plot(xy[:, 0], -xy[:, 1], 'o', markerfacecolor=tuple(col),
+                 markeredgecolor='k', markersize=1)
+
+        xy = X[class_member_mask & ~core_samples_mask]
+        plt.plot(xy[:, 0], -xy[:, 1], 'o', markerfacecolor=tuple(col),
+                 markeredgecolor='k', markersize=0.1)
+
+    plt.title('Estimated number of clusters: %d' % n_clusters_)
+    plt.show()
 
 
 def process_selection_image(img_in, threshold, mask_grid, preprocessed=False):
@@ -45,6 +85,7 @@ def process_selection_image(img_in, threshold, mask_grid, preprocessed=False):
     :param threshold: 0 to 1 analog value, selected threshold for the adaptive thresholding step; this function will be
             used in the grid system, needle check, and main algorithm sections.
     :param mask_grid: defined masking area from the grid images
+    :param preprocessed: bool whether or not the image has already been preprocessed
     :return: the processed image POINTS that will be further analyzed (a 2xN numpy array)
 
     Algorithm Process is as follows:
@@ -55,11 +96,15 @@ def process_selection_image(img_in, threshold, mask_grid, preprocessed=False):
     5) Extract the remaining points and return a 2xN numpy array
     """
     if not preprocessed:
-        clahe_img = apply_clahe(img_in, 5.0, (8, 8))
+        clahe_img = apply_clahe(img_in, 7.0, (40, 40))
         mask = create_mask(img_in, 100, 255)
         threshold = int(255*threshold)
-        adapt_mean_th = adapt_thresh(clahe_img, 255, threshold, 20)
-        masked_img = apply_mask(adapt_mean_th, mask)
+        low = adapt_thresh(clahe_img, 255, threshold, 10)
+        high = adapt_thresh(clahe_img, 255, threshold, 20)  # we are creating a bandpass filter here
+        #adapt_mean_th = adapt_thresh(low, 255, threshold, 15)
+        masked_low = apply_mask(low, mask)
+        masked_high = apply_mask(high, mask)
+        masked_img = masked_low - np.logical_and(masked_low, masked_high)
     else:
         masked_img = img_in
     # for some reason this bit level logic on the images was really hard for me to do...
@@ -77,6 +122,7 @@ def final_selection(centers, size, index=False):
     """
     :param centers: kmean dataset
     :param size: size of image array to proportion our box friend correctly
+    :param index: bool to decide whether final_selection is returned as a point or index
     :return: final [x, y] coordinate set for the injection site
 
     We want the final selection site to be one that has a neighborhood with low variance in its
@@ -91,14 +137,15 @@ def final_selection(centers, size, index=False):
         each = centers[i]
         # original box_friend dimensions were 60x300 for a 3280, 2464 array
         # so the ratio is x/3280 and y/2464
-        box_friend = [60*size[0]/3280, 300*size[1]/2464]  # dimensions of box to check with
-        [npoints, standev, avgdist, maxdist] = check_box(each, centers, box_friend[0], box_friend[1])
+        box_friends = [40*size[0]/3280, 150*size[1]/2464]  # dimensions of box to check with
+        box_enemies = [120*size[0]/3280, 24*size[1]/2464] # don't forget, dividy by 2 so it's larger than appears!
+        [npoints, standev, avgdist, maxdist] = check_box(each, centers, box_friends, box_enemies)
         """
         Ironically, this fucntion works better if we ignore the number of points and instead use the
         standard deviation of the xcoordinates only as the check. I verified this while I was messing
         around with different images. - JPS
         """
-        if standev < hold[1] and npoints > 2:
+        if standev < hold[1] and npoints > hold[0]:
             hold = [npoints, standev, avgdist, maxdist]
             if index:
                 final_selection = i
@@ -133,12 +180,12 @@ def create_kmedoids(kmean_set, n):
     return [clust_x, clust_y]
 
 
-def check_box(kpoint, kset, width, height):
+def check_box(kpoint, kset, live, kill):
     """
     :param kpoint: reference point (it's critical that this is passed correctly; we want a tuple [x y])
     :param kset: all the kmean points
-    :param width: box width
-    :param height: box height
+    :param live: tuple, box width and height for a valid point analysis
+    :param kill: tuple, box width and height for a point that needs to be executed by the guillotine
     :return: tuple containing the number of points in the box, and the standard deviation of the x
 
     The general idea behind this function is that every kmedoid point (or potentially every kmean point)
@@ -150,14 +197,24 @@ def check_box(kpoint, kset, width, height):
     little more difficult to do than a traditional array.
     """
     # start by defining the box. Luckily, we are not bounded by the image so we do not care if it goes off the page.
-    xbounds = [kpoint[0]-width/2, kpoint[0]+width/2]
-    ybounds = [kpoint[1]-height/2, kpoint[1]+height/2]
+    xbounds_good = [kpoint[0]-live[0]/2, kpoint[0]+live[0]/2]
+    ybounds_good = [kpoint[1]-live[1]/2, kpoint[1]+live[1]/2]
+    xbounds_bad = [kpoint[0]-kill[0]/2, kpoint[0]+kill[0]/2]
+    ybounds_bad = [kpoint[1]-kill[1]/2, kpoint[1]+kill[1]/2]
     box_bros = []
     box_brosy = []
     xmedian = get_xmedian(kset)
+    kill_next_time = False
     xmedian_bounds = [xmedian-500, xmedian+500]
     for each in kset:
-        if (xbounds[0] < each[0] < xbounds[1]) and (ybounds[0] < each[1] < ybounds[1]):
+        # We need to decide whether to kill this kpoint
+        if each[0] == kpoint[0] and each[1] == kpoint[1]:
+            # do nothing, since the kill command will cause this poor kpoint to commit suicide if this is not here'
+            kill_next_time = True
+            'do nothing'
+        elif (xbounds_bad[0] < each[0] < xbounds_bad[1]) and (ybounds_bad[0] < each[1] < ybounds_bad[1]) and kill_next_time:
+            break
+        if (xbounds_good[0] < each[0] < xbounds_good[1]) and (ybounds_good[0] < each[1] < ybounds_good[1]):
             if xmedian_bounds[0] < each[0] < xmedian_bounds[1]:
                 box_bros.append(each[0])
                 box_brosy.append(each[1])
@@ -165,12 +222,67 @@ def check_box(kpoint, kset, width, height):
     if len(box_bros) > 1.5:  # make sure that it is not 1. That will crash the standev calculation.
         standev = calc_standev(box_bros)
         [avgdist, maxdist] = sort_and_compare(box_brosy)
+        # nchain = slope_chain(kpoint, kset, 70, )
     else:
         standev = 10000
         avgdist = 10000
         maxdist = 10000
 
     return len(box_bros), standev, avgdist, maxdist
+
+
+def slope_chain(kpoint, kset, max_dist, slope, n):
+    '''
+    :param kpoint:
+    :param kset:
+    :param max_dist:
+    :param slope
+    :return: # number of points that fulfill a desired chain of constant slope
+
+    Note: This algorithm is a recursive algorithm and will be executed until the chain
+    has reached a point where no points can fulfill the requirements at the end. If a chain
+    reaches a certain length, it will be given a priority in the final selection since any
+    set of points that meet this chain requirements are representative of a vein and not noise.
+    '''
+    n_chain = n
+    hold_slope = slope
+    for each in kset:
+        if get_distance(kpoint, each) < max_dist:
+            slope = get_slope(kpoint, each)
+            if percent_diff(hold_slope, slope) < 0.2:
+                n_chain = n_chain + 1
+                slope_chain(each, kset, max_dist, slope, n_chain)
+
+    return n_chain
+
+
+def get_distance(kpoint, setpoint):
+    '''
+    :param kpoint: a point
+    :param setpoint: a different point
+    :return: absolute distance between the two points
+    '''
+    return abs(math.sqrt((kpoint[0]**2 - setpoint[0]**2) + (kpoint[1]**2 - setpoint[1]**2)))
+
+
+def get_slope(kpoint, setpoint):
+    '''
+    :param kpoints: a point
+    :param setpoint: a different point
+    :return: slope between the two points (if greater than like 8, just cap it at a high value like 100)
+    '''
+    slope = (setpoint[1]-kpoint[1])/(setpoint[0] - kpoint[0])
+    if slope > 8:
+        slope = 100
+    if slope < -8:
+        slope = -100
+    return slope
+
+
+def percent_diff(value, new):
+    # this is self explanatory so I am not going to write out more than I need to...well, I have already written this
+    # much about it so why not...NO. I refuse to give in here.
+    return (new-value)/(new+value)
 
 
 def calc_standev(x_set):
@@ -282,11 +394,11 @@ def get_xmedian(points):
     """
     :param points: final kmean set
     :return: new_points: median of the x coordinates
-    
+
     I am having an issue where some points are making it through the process image algorithm and are
     on the gantry rails and not from the arm. These points are also perfectly verticle so they are causing serious
     problems in the final selection algorithm.
-    
+
     We will call this function in final selection. Iterating through the entire dataset would take too long.
     """
     xpoints = []
@@ -308,7 +420,7 @@ def create_strips(image):
     """
     #  determine the image size
     [xsize, ysize] = np.shape(image)
-    slice_size = 150
+    slice_size = 100
     increment, remainder = ysize//slice_size,  ysize % slice_size
     horizontal = np.ones((xsize, ysize))
     # divide into size 150 segments; may change this as needed
@@ -339,8 +451,8 @@ def grid_mask(grid_vertical, enable_gantry_rails=True):
     #  the x size and divide it by 2 and multiply by 0.222 and +/- that on both ends
     #  (Did I forget to mention that these gantry rails are the bane of my existence?
     if enable_gantry_rails:  # in case Rich comes thru and crops the entire image ( ͡° ͜ʖ ͡°)
-        min_x = min_x + 100#760
-        max_x = max_x - 100#880
+        min_x = min_x + 133#760#100#
+        max_x = max_x - 200#880#100#
     gantry_mask = np.ones((sizey, sizex))
     gantry_mask[:, 0:min_x] = 0
     gantry_mask[:, max_x:sizex] = 0
@@ -359,31 +471,48 @@ def execute_kmean(dataset, nclusters):
     kmeans = MiniBatchKMeans(n_clusters=nclusters, random_state=0).fit(dataset)  # default is Kmeans++ so this function auto does that for us
     return kmeans.cluster_centers_
 
-def initialize_horizontal_grid(file_horizontal):
-    """
-    :param file_horizontal: address of file containing horizontal grid information
-    :return: grid_horizontal array
-    """
-    grid_horizontal = cv2.imread(file_horizontal, 0)
-    grid_horizontal = grid.process_grid(grid_horizontal, 0.6)
-    return grid_horizontal
 
-def initialize_vertical_grid(file_vertical):
+def execute_DBSCAN(dataset, eps, min_samp):
     """
-    :param file_vertical: address of file containing vertical grid information
-    :return: grid_vertical array
+    :param dataset: points remaining after either the image processing or kmean step (haven't decided which yet)
+    :param eps: epsilon value (we'll have to tweak this until it corresponds to veins and rejects shadow groups)
+    :param min_samples: not sure what this is yet
+    :return: unsure
     """
-    grid_vertical = cv2.imread(file_vertical, 0)
-    grid_vertical = grid.process_grid(grid_vertical, 0.6)
-    return grid_vertical
+    db = DBSCAN(eps=eps, min_samples = min_samp).fit(dataset)
+    return db
 
-def initialize_grids(file_horizontal, file_vertical):
+def initialize_grids(image, file_horizontal, file_vertical, unused_arg=False):
     """
+    :param image: photo taken by the pi camera
     :param file_horizontal: address of file containing horizontal grid information
     :param file_vertical: address of file containing vertical grid information
     :return: two grid arrays, grid_vertical and grid_horizontal
     """
-    return initialize_vertical_grid(file_vertical), initialize_horizontal_grid(file_horizontal)
+    horizontal = cv2.imread(file_horizontal, 0)
+    vertical = cv2.imread(file_vertical, 0)
+    if np.shape(image) != np.shape(horizontal):
+        re = np.shape(image)
+        horizontal = cv2.resize(horizontal, (re[0], re[1]))
+        vertical = cv2.resize(vertical, (re[0], re[1]))
+    grid_horizontal = grid.process_grid(horizontal, 0.6)
+    grid_vertical = grid.process_grid(vertical, 0.6)
+    return grid_vertical, grid_horizontal
+
+def initialize_grids(target_res, np_horizontal, np_vertical):
+    """
+    :param image: photo taken by the pi camera
+    :param file_horizontal: numpy array containing horizontal grid information
+    :param file_vertical: numpy array containing vertical grid information
+    :return: two grid arrays, grid_vertical and grid_horizontal
+    """
+    if target_res != np.shape(np_horizontal):
+        re = target_res
+        np_horizontal = cv2.resize(np_horizontal, (re[1], re[0]))
+        np_vertical = cv2.resize(np_vertical, (re[1], re[0]))
+    grid_horizontal = grid.process_grid(np_horizontal, 0.6)
+    grid_vertical = grid.process_grid(np_vertical, 0.6)
+    return grid_vertical, grid_horizontal
 
 
 def compare_points(iv_site, needle, grid_horizontal, grid_vertical):
@@ -415,7 +544,7 @@ def get_position(site, grid_horizontal, grid_vertical):
     REQUIRES THE GRID LIBRARY "SPOOKY_LIB"
     """
     xslice, yslice = grid.slice_grid(site, grid_horizontal, grid_vertical)
-    [xpos, ypos] = grid.interpolate(site, xslice, yslice)
+    [xpos, ypos] = grid.interpolate(site, yslice, xslice)
     return xpos, ypos
 
 """
@@ -497,9 +626,9 @@ def process_needle_image(img_in, mask_grid):
     adapt_mean_th = adapt_thresh(clahe_img, 255, threshold, 97)
     adapt_mean_th = np.logical_or(adapt_mean_th, adapt_mean_th)
     image = (np.logical_and(mask_grid, adapt_mean_th)) + np.logical_not(mask_grid)
-    #plt.plot
-    #plt.imshow(image)
-    #plt.show()
+    plt.plot
+    plt.imshow(image)
+    plt.show()
     return np.where(image == 0)
 
 
