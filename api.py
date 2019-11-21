@@ -54,8 +54,10 @@ class Processor(AbstractProcessor):
 
     def __init__(self, camera_width, camera_height, clip_rails_numpy=False):
         self.img_in = None
-        horizontal = cv2.imread('assets/coord_static_x_revised.png', 0)
-        vertical = cv2.imread('assets/coord_static_y.png', 0)
+        #horizontal = cv2.imread('assets/coord_static_x_revised.png', 0)
+        #vertical = cv2.imread('assets/coord_static_y.png', 0)
+        horizontal = cv2.imread('assets/grid_ver_smol_revised.jpg', 0)
+        vertical = cv2.imread('assets/grid_hor_smol_revised.jpg', 0)
         self.grid_horizontal, self.grid_vertical = iv.initialize_grids((camera_height, camera_width), horizontal,
                                                                        vertical)
         #self.grid_horizontal = cv2.resize(self.grid_horizontal, (camera_width, camera_height))
@@ -86,7 +88,6 @@ class Processor(AbstractProcessor):
         masked_low = iv.apply_mask(low, mask)
         masked_high = iv.apply_mask(high, mask)
         masked_img = masked_low - np.logical_and(masked_low, masked_high)
-        cv2.imwrite('wtf.jpg', masked_img)
         masked = masked_img.astype(np.uint8)
         return masked
 
