@@ -23,6 +23,8 @@ import forwarding_server
 from common import log_image
 from traceback import print_tb
 import platform
+from OpenGL import GL
+from OpenGL import GLU
 
 import common
 
@@ -556,7 +558,7 @@ class MainWindow(QMainWindow):
                 else:
                     self.camera = Camera(0)
 
-            self.camera.start()
+            #self.camera.start()
 
 
         self.processor = get_processor()
@@ -593,7 +595,7 @@ class MainWindow(QMainWindow):
         input_box_layout.addWidget(self.input_box_status)
         self.pics_hbox.addWidget(self.input_box) #(self.lb)
         self.feed = PreviewThread(self.camera, self.video_frame)
-        self.feed.start()
+        #self.feed.start()
 
         # Init thread that manages Gantry...
         self.status_thread = StatusThread(self.gantry_status, self.processing_status)
@@ -632,6 +634,9 @@ class MainWindow(QMainWindow):
         self._layout.addWidget(self.btn_widget2)
 
         self.show()
+
+        gfx_thread = GraphicsThread(self)
+        gfx_thread.start()
 
     def get_active_mode(self):
         return self.checkbox_widget.group.checkedId() # will correspond to modes
@@ -883,4 +888,135 @@ class MainWindow(QMainWindow):
         pass
 
     def debug_cmds_event(self):
+
         pass
+
+
+verticies = (
+    (4, -4, -4),
+    (4, 4, -4),
+    (-4, 4, -4),
+    (-4, -4, -4),
+    (4, -4, 4),
+    (4, 4, 4),
+    (-4, -4, 4),
+    (-4, 4, 4)
+)
+
+small_verticies = (
+    (1, -1, -1),
+    (1, 1, -1),
+    (-1, 1, -1),
+    (-1, -1, -1),
+    (1, -1, 1),
+    (1, 1, 1),
+    (-1, -1, 1),
+    (-1, 1, 1)
+)
+
+edges = (
+    (0, 1),
+    (0, 3),
+    (0, 4),
+    (2, 1),
+    (2, 3),
+    (2, 7),
+    (6, 3),
+    (6, 4),
+    (6, 7),
+    (5, 1),
+    (5, 4),
+    (5, 7)
+)
+
+
+def Cube():
+    GL.glBegin(GL.GL_LINES)
+    for edge in edges:
+        for vertex in edge:
+            GL.glVertex3fv(verticies[vertex])
+    GL.glEnd()
+
+
+def SmallCube():
+    GL.glBegin(GL.GL_LINES)
+    for edge in edges:
+        for vertex in edge:
+            GL.glVertex3fv(small_verticies[vertex])
+    GL.glEnd()
+
+
+class GraphicsThread(QThread):
+    """
+    Thread for graphics rendering.
+    """
+    def __init__(self, parent):
+        super().__init__()
+        self.parent = parent
+        window = QDialog(self.parent)
+        window.resize(800, 600)
+
+        glsub = OpenGLWidget(window, self)
+        window.show()
+        QCoreApplication.processEvents()
+
+        glsub.moveCube()
+
+        # QLayout
+        print("window opened....")
+
+
+
+class OpenGLWidget(QOpenGLWidget):
+
+    def __init__(self, window, parent):
+        super(QOpenGLWidget, self).__init__(window)
+        self.parent = parent
+        self.i = 0
+
+    def initializeGL(self):
+        """
+        vertices = numpy.array([0.0, 1.0, -1.0, -1.0, 1.0, -1.0], dtype=numpy.float32)
+
+        bufferId = GL.glGenBuffers(1)
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, bufferId)
+        GL.glBufferData(GL.GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL.GL_STATIC_DRAW)
+
+        GL.glEnableVertexAttribArray(0)
+        GL.glVertexAttribPointer(0, 2, GL.GL_FLOAT, GL.GL_FALSE, 0, None)
+
+        GL.glRotatef(20, 3, 1, 1)
+        """
+        GLU.gluPerspective(45, (800 / 600), 0.1, 50.0)
+
+        GL.glTranslatef(0.0, 0.0, -20)
+
+        GL.glRotatef(20, 3, 1, 1)
+        pass
+
+    def moveCube(self):
+        for x in range(0, 300):
+            self.i = self.i + 1
+            self.update()
+            self.parent.msleep(10)
+            qApp.processEvents()
+
+
+
+    def paintGL(self):
+            # glRotatef(1, 3, 1, 1)
+            GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
+            Cube()
+
+            GL.glPushMatrix()
+            GL.glTranslatef(self.i * 0.01, self.i * 0.01, 0)
+            SmallCube()
+            GL.glPopMatrix()
+
+            #pygame.display.flip()
+
+            #pygame.time.wait(10)
+        #GL.glDrawArrays(GL.GL_TRIANGLES, 0, 3)
+
+    def sizeHint(self):
+        return QSize(800, 600)
