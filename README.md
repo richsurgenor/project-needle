@@ -1,3 +1,12 @@
+# Installation
+
+- Have a python3 environment
+- Run ```pip install -r requirements.txt```
+
+# Usage
+
+- To start the GUI run ./start.sh
+
 # Project Overview 
 
 The vein-detection system utilizes a webcam, near-IR LEDs, and a Raspberry Pi. Cameras generally have an IR filter in
