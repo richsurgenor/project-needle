@@ -1,7 +1,7 @@
 # Installation
 
 - Have a python3 environment
-- Run ```pip install -r requirements.txt```
+- Run ```pip install -r requirements.txt``` (it may be pip3)
 
 # Usage
 
