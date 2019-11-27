@@ -12,7 +12,7 @@ Justin Sutherland, Laura Grace Ayers.
 
 from PyQt5.QtCore import Qt, QCoreApplication, QSize, QThread, QFile, QTextStream, QPoint
 from PyQt5.QtWidgets import *
-from PyQt5.QtGui import QPixmap, QPainter, QImage, QColor, QStandardItemModel
+from PyQt5.QtGui import QPixmap, QPainter, QImage, QColor, QKeySequence
 import numpy
 import cv2
 import sys
@@ -633,10 +633,13 @@ class MainWindow(QMainWindow):
         self.btn_widget2.setLayout(btn_panel2)
         self._layout.addWidget(self.btn_widget2)
 
+        self.setAttribute(Qt.WA_DeleteOnClose, True)
+
         self.show()
 
         gfx_thread = GraphicsThread(self)
         gfx_thread.start()
+
 
     def get_active_mode(self):
         return self.checkbox_widget.group.checkedId() # will correspond to modes
@@ -953,19 +956,40 @@ class GraphicsThread(QThread):
     def __init__(self, parent):
         super().__init__()
         self.parent = parent
-        window = QDialog(self.parent)
-        window.resize(800, 600)
 
-        glsub = OpenGLWidget(window, self)
-        window.show()
-        QCoreApplication.processEvents()
-
-        glsub.moveCube()
+        self.window = GfxWindow(self, self.parent)
 
         # QLayout
         print("window opened....")
 
+class GfxWindow(QDialog):
 
+    def __init__(self, parent, main):
+        super().__init__()
+
+        self.parent = parent
+        self.main = main
+        self.resize(800, 600)
+
+        self.gfx_widget = OpenGLWidget(self, self.parent)
+
+        down = QShortcut(Qt.Key_Down, self, self.gfx_widget.changePerspective)
+        up = QShortcut(Qt.Key_Up, self, self.gfx_widget.changePerspective2)
+        right = QShortcut(Qt.Key_Right, self, self.gfx_widget.changePerspective3)
+        left = QShortcut(Qt.Key_Left, self, self.gfx_widget.changePerspective4)
+
+        self.move(self.main.window().x() - 600, self.main.window().y() + 400)
+        self.setWindowTitle("GFX View")
+        self.show()
+        QCoreApplication.processEvents()
+
+        self.i = 1
+
+        self.gfx_widget.moveCube()
+
+    #def keyPressEvent(self, eventQKeyEvent):
+    #    eventQKeyEvent.
+    #    print("hi")
 
 class OpenGLWidget(QOpenGLWidget):
 
@@ -973,6 +997,9 @@ class OpenGLWidget(QOpenGLWidget):
         super(QOpenGLWidget, self).__init__(window)
         self.parent = parent
         self.i = 0
+        self.z = 10.0
+        self.zoom = 45
+        self.change = False
 
     def initializeGL(self):
         """
@@ -987,7 +1014,11 @@ class OpenGLWidget(QOpenGLWidget):
 
         GL.glRotatef(20, 3, 1, 1)
         """
-        GLU.gluPerspective(45, (800 / 600), 0.1, 50.0)
+        GL.glViewport(0, 0, 800, 600)
+
+        #GL.glMatrixMode(GL.GL_MODELVIEW)
+        #GL.glLoadIdentity()
+        GLU.gluPerspective(45, (800 / 600), 1, 400.0)
 
         GL.glTranslatef(0.0, 0.0, -20)
 
@@ -996,15 +1027,27 @@ class OpenGLWidget(QOpenGLWidget):
 
     def moveCube(self):
         for x in range(0, 300):
-            self.i = self.i + 1
+            self.i = self.i - 1
             self.update()
             self.parent.msleep(10)
             qApp.processEvents()
 
-
-
     def paintGL(self):
             # glRotatef(1, 3, 1, 1)
+            #GLU.gluPerspective(90, (800 / 600), 0.1, 50.0)
+
+            GL.glMatrixMode(GL.GL_PROJECTION)
+            GL.glLoadIdentity()
+
+            GLU.gluPerspective(self.zoom, (800 / 600), 1, 50.0)
+            GL.glMatrixMode(GL.GL_MODELVIEW)
+            #if self.change:
+            GL.glLoadIdentity()
+            GLU.gluLookAt(0, 0, self.z, 0, 0, 0, 0, 1, 0)
+            self.change = False
+            #GL.glMatrixMode(GL.GL_PROJECTION)
+            #GL.glTranslatef(0.0, 0.0, -20)
+            #GL.glRotatef(20, 3, 1, 1)
             GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
             Cube()
 
@@ -1017,6 +1060,24 @@ class OpenGLWidget(QOpenGLWidget):
 
             #pygame.time.wait(10)
         #GL.glDrawArrays(GL.GL_TRIANGLES, 0, 3)
+
+    def changePerspective(self):
+        self.z = self.z - 1.5
+        self.change = True
+        self.update()
+
+    def changePerspective2(self):
+        self.z = self.z + 1.5
+        self.change = True
+        self.update()
+
+    def changePerspective3(self):
+        self.zoom = self.zoom + 1
+        self.update()
+
+    def changePerspective4(self):
+        self.zoom = self.zoom - 1
+        self.update()
 
     def sizeHint(self):
         return QSize(800, 600)
