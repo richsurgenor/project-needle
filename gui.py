@@ -28,6 +28,7 @@ from OpenGL import GLU
 from math import pow, sqrt, asin, pi
 
 import common
+from objloader import OBJ
 
 if not platform.uname()[0] == 'Windows':
     USING_PI = os.uname()[4][:3] == 'arm'
@@ -1098,6 +1099,7 @@ class OpenGLWidget(QOpenGLWidget):
         self.uz = None
         self.angle = None
         self.CT = GL.glGetFloatv(GL.GL_MODELVIEW_MATRIX)
+        self.obj = OBJ("assets/syringe.obj", swapyz=True)
         pass
 
     def moveCube(self):
@@ -1134,12 +1136,15 @@ class OpenGLWidget(QOpenGLWidget):
             #GL.glRotatef(20, 3, 1, 1)
             GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
             GL.glColor3d(0, 0, 0);
+
             Cube()
 
             GL.glPushMatrix()
             GL.glTranslatef(self.i * 0.01, self.i * 0.01, 0)
             SmallCube()
             GL.glPopMatrix()
+
+            GL.glCallList(self.obj.gl_list)
 
         #GL.glDrawArrays(GL.GL_TRIANGLES, 0, 3)
 
