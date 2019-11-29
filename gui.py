@@ -25,6 +25,7 @@ from traceback import print_tb
 import platform
 from OpenGL import GL
 from OpenGL import GLU
+from math import pow, sqrt, asin, pi
 
 import common
 
@@ -146,7 +147,7 @@ def set_forwarding_settings():
 
     CLIP_RAILS_THROUGH_NUMPY = True
 
-FAKE_INPUT_IMG = 0
+FAKE_INPUT_IMG = 1
 if FAKE_INPUT_IMG:
     FAKE_INPUT_IMG_NAME = "./test_images/rich.jpg"
     CAMERA_RESOLUTION_WIDTH = 1000#3280
@@ -906,6 +907,9 @@ verticies = (
     (-4, 4, 4)
 )
 
+
+verticies = numpy.hstack(verticies).reshape(-1,3).astype(numpy.float32)
+
 small_verticies = (
     (1, -1, -1),
     (1, 1, -1),
@@ -969,7 +973,7 @@ class GfxWindow(QDialog):
 
         self.parent = parent
         self.main = main
-        self.resize(800, 600)
+        self.resize(600, 600)
 
         self.gfx_widget = OpenGLWidget(self, self.parent)
 
@@ -991,15 +995,72 @@ class GfxWindow(QDialog):
     #    eventQKeyEvent.
     #    print("hi")
 
+    def mousePressEvent(self, event):
+        pos = event.pos()
+        print("pressed. coords: {}".format(pos))
+        self.setMouseTracking(True)
+
+        # Convert window coordinates to cartesian
+        self.old_x = float(event.pos().x() - GFX_WINDOW_WIDTH/2)
+        self.old_y = float(GFX_WINDOW_HEIGHT/2 - event.pos().y())
+
+        val = float((GFX_WINDOW_WIDTH/2)*(GFX_WINDOW_HEIGHT/2)-pow(self.old_x, 2)-pow(self.old_y, 2))
+        self.old_z = sqrt(val)
+        print("complete..")
+
+    def mouseReleaseEvent(self, event):
+        pos = event.pos()
+        print("released. coords: {}".format(pos))
+        self.setMouseTracking(False)
+
+    def mouseMoveEvent(self, event):
+        print("coords: {}".format(event.pos()))
+        pos = event.pos()
+        self.new_x = float(pos.x() - GFX_WINDOW_WIDTH / 2)
+        self.new_y = float(GFX_WINDOW_HEIGHT / 2 - pos.y())
+        try:
+            self.new_z = float(
+                sqrt(( (GFX_WINDOW_WIDTH / 2) * (GFX_WINDOW_HEIGHT / 2) ) - pow(self.new_x, 2) - pow(self.new_y, 2)))
+        except:
+            return
+        # cross products of 2 vectors
+        ux = self.new_y * self.old_z - self.new_z * self.old_y
+        uy = self.new_z * self.old_x - self.new_x * self.old_z
+        uz = self.new_x * self.old_y - self.new_y * self.old_x
+
+        # new (cross) old = |new||old|sin(angle)
+        self.gfx_widget.angle = asin(
+            sqrt(pow(ux, 2) + pow(uy, 2) + pow(uz, 2)) / ( (GFX_WINDOW_WIDTH/2) * (GFX_WINDOW_HEIGHT/2) )) * (180 / pi)
+
+        print("this is angle: {}".format(self.gfx_widget.angle))
+        self.gfx_widget.ux = ux
+        self.gfx_widget.uy = uy
+        self.gfx_widget.uz = uz
+
+        # set rotation to trigger
+        self.gfx_widget.rotation = True
+        self.gfx_widget.update()
+
+        # update old for next rotation... otherwise we will be using the original old pos over and over
+        self.old_x = self.new_x
+        self.old_y = self.new_y
+        self.old_z = self.new_z
+
+GFX_WINDOW_WIDTH=600
+GFX_WINDOW_HEIGHT=600
+
 class OpenGLWidget(QOpenGLWidget):
 
     def __init__(self, window, parent):
         super(QOpenGLWidget, self).__init__(window)
+        self.window = window
         self.parent = parent
         self.i = 0
         self.z = 10.0
-        self.zoom = 45
+        self.zoom = 90
         self.change = False
+        self.rotation = False
+        self.CT = None
 
     def initializeGL(self):
         """
@@ -1014,15 +1075,29 @@ class OpenGLWidget(QOpenGLWidget):
 
         GL.glRotatef(20, 3, 1, 1)
         """
-        GL.glViewport(0, 0, 800, 600)
+        GL.glViewport(0, 0, GFX_WINDOW_WIDTH, GFX_WINDOW_HEIGHT)
 
         #GL.glMatrixMode(GL.GL_MODELVIEW)
         #GL.glLoadIdentity()
-        GLU.gluPerspective(45, (800 / 600), 1, 400.0)
+        GL.glClearColor(1.0, 1.0, 1.0, 0.0)
+        GL.glMatrixMode(GL.GL_PROJECTION)
+        GL.glLoadIdentity()
+        GLU.gluPerspective(90, (GFX_WINDOW_WIDTH / GFX_WINDOW_HEIGHT), 1, 50.0)
 
+        GL.glMatrixMode(GL.GL_MODELVIEW)
         GL.glTranslatef(0.0, 0.0, -20)
 
-        GL.glRotatef(20, 3, 1, 1)
+        #GL.glRotatef(20, 3, 1, 1)
+
+        # need glortho?
+        GL.glMatrixMode(GL.GL_MODELVIEW)
+        #GL.glLoadIdentity()
+
+        self.ux = None
+        self.uy = None
+        self.uz = None
+        self.angle = None
+        self.CT = GL.glGetFloatv(GL.GL_MODELVIEW_MATRIX)
         pass
 
     def moveCube(self):
@@ -1039,16 +1114,26 @@ class OpenGLWidget(QOpenGLWidget):
             GL.glMatrixMode(GL.GL_PROJECTION)
             GL.glLoadIdentity()
 
-            GLU.gluPerspective(self.zoom, (800 / 600), 1, 50.0)
+            GLU.gluPerspective(self.zoom, (GFX_WINDOW_WIDTH / GFX_WINDOW_HEIGHT), 1, 50.0)
             GL.glMatrixMode(GL.GL_MODELVIEW)
+
+            if self.rotation:
+                #GL.glMatrixMode(GL.GL_MODEL_VIEW)
+                GL.glLoadMatrixf(self.CT)
+                GL.glRotatef(self.angle, self.ux, self.uy, self.uz)
+                self.CT = GL.glGetFloatv(GL.GL_MODELVIEW_MATRIX)
+                self.rotation=False
+                pass
+
             #if self.change:
-            GL.glLoadIdentity()
-            GLU.gluLookAt(0, 0, self.z, 0, 0, 0, 0, 1, 0)
+            GL.glLoadMatrixf(self.CT)
+            #GLU.gluLookAt(0, 10, self.z, 0, 0, 0, 0, 1, 0)
             self.change = False
             #GL.glMatrixMode(GL.GL_PROJECTION)
             #GL.glTranslatef(0.0, 0.0, -20)
             #GL.glRotatef(20, 3, 1, 1)
             GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
+            GL.glColor3d(0, 0, 0);
             Cube()
 
             GL.glPushMatrix()
@@ -1056,9 +1141,6 @@ class OpenGLWidget(QOpenGLWidget):
             SmallCube()
             GL.glPopMatrix()
 
-            #pygame.display.flip()
-
-            #pygame.time.wait(10)
         #GL.glDrawArrays(GL.GL_TRIANGLES, 0, 3)
 
     def changePerspective(self):
@@ -1080,4 +1162,4 @@ class OpenGLWidget(QOpenGLWidget):
         self.update()
 
     def sizeHint(self):
-        return QSize(800, 600)
+        return QSize(GFX_WINDOW_WIDTH, GFX_WINDOW_HEIGHT)
