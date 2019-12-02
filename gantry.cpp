@@ -128,14 +128,22 @@ int wait_for_coordinate(){
 /********************************************************************/
 int move_cap_to_IL(){
 
-	int dir, z_depth = 0;
+	int z_depth = 0;
+	int result[2];
 
-	dir = FORWARD;
-	move_stepper(X_AXIS, x_coord, dir);
-	move_stepper(Y_AXIS, y_coord, dir);
-	z_depth = move_stepper(Z_AXIS, z_coord, dir);
+	move_stepper(X_AXIS, x_coord, FORWARD);
+	move_stepper(Y_AXIS, y_coord, FORWARD);
+	z_depth = move_stepper(Z_AXIS, z_coord, FORWARD);
+	while(z_found == 0){
+		move_stepper(Z_AXIS, z_depth, BACKWARD);
+		delay(100);
+		z_depth = move_stepper(Z_AXIS, z_coord, FORWARD);
+	}
 	Serial.println("z_depth 2: ");
 	Serial.println(z_depth);
+	char output[50];
+    sprintf(output, "x: %d y: %d", result[0], result[1]);
+    status_msg(output);
 	return(z_depth);
 }
 
@@ -361,7 +369,7 @@ int mm_to_steps(int axis, double distance){
 		screw_lead_axis = SCREW_LEAD_Z;
 	}
 
-	totalSteps = (double)STEPS_PER_REVOLUTION * ( 1 / (double)screw_lead_axis) * ((double)(distance + 1));
+	totalSteps = (double)STEPS_PER_REVOLUTION * ( 1 / (double)screw_lead_axis) * ((double)(distance));
 
 	return(totalSteps);
 }
@@ -438,6 +446,7 @@ int move_stepper(int axis, int nSteps, int dir){
 	    /*
          * Would like a status msg with the z depth found
          */
+		
 		z_depth = depth_finder();
 		Serial.println("z_depth 1: ");
 		Serial.println(z_depth);
@@ -452,6 +461,10 @@ int move_stepper(int axis, int nSteps, int dir){
 		delay(2);
 		digitalWrite(stepPin, LOW);
 		delay(2);
+		
+		//char output[20];
+		//sprintf(output, "moving: %d", i);
+		//status_msg(output);	
 		//Serial.println(i);
 	}
 	return(0);
@@ -490,13 +503,12 @@ int depth_finder(){
 			debounceCap += capSamples[n];
 			
 		}
-		if(debounceCap > 7){
+		if(debounceCap > 3){			//change this back to 7 for marker
 			Serial.println("debounce cap: ");
 			Serial.println(debounceCap);
 			z_found = 1;
-			return(z_depth);
 		}
-	return(0);
+	return(z_depth);
 }
 
 void send_cmd(int cmd) {
@@ -561,6 +573,10 @@ int process_req(const char* msg) {
 			inject_needle();
 			pull_needle();
 			move_back_from_IL(z_depth);
+			x_coord = 0;
+			y_coord = 0;
+			z_coord = 0;
+			z_found = 0;
             break;
         case REQ_RESET:
             status_msg("Resetting...");
@@ -598,6 +614,7 @@ void decode_coordinate(const char* msg) {
 	
 	x_coord = result[0];
 	y_coord = result[1];
+	
 	
 	char output[50];
     sprintf(output, "x: %d y: %d", result[0], result[1]);
