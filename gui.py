@@ -12,7 +12,7 @@ Justin Sutherland, Laura Grace Ayers.
 
 from PyQt5.QtCore import Qt, QCoreApplication, QSize, QThread, QFile, QTextStream, QPoint
 from PyQt5.QtWidgets import *
-from PyQt5.QtGui import QPixmap, QPainter, QImage, QColor, QKeySequence
+from PyQt5.QtGui import QPixmap, QPainter, QImage, QColor, QKeySequence, QSurfaceFormat, QOpenGLVertexArrayObject
 import numpy
 import cv2
 import sys
@@ -24,6 +24,11 @@ from common import log_image
 from traceback import print_tb
 import platform
 from OpenGL import GL
+from OpenGL.GL import shaders
+#from OpenGL.raw.GL.ARB.vertex_array_object import glGenVertexArrays, \
+#                                                  glBindVertexArray
+#from OpenGL.raw.GL.ARB.vertex_buffer_object import *
+from OpenGL.raw.GL.APPLE.vertex_array_object import *
 from OpenGL import GLU
 from math import pow, sqrt, asin, pi
 
@@ -150,7 +155,7 @@ def set_forwarding_settings():
 
 FAKE_INPUT_IMG = 1
 if FAKE_INPUT_IMG:
-    FAKE_INPUT_IMG_NAME = "./test_images/rich.jpg"
+    FAKE_INPUT_IMG_NAME = "./justin_python/justin1.jpg"
     CAMERA_RESOLUTION_WIDTH = 1000#3280
     CAMERA_RESOLUTION_HEIGHT = 1000#2464
     GUI_IMAGE_SIZE_WIDTH = 500 #550  # 640
@@ -560,7 +565,7 @@ class MainWindow(QMainWindow):
                 else:
                     self.camera = Camera(0)
 
-            #self.camera.start()
+            self.camera.start()
 
 
         self.processor = get_processor()
@@ -597,7 +602,7 @@ class MainWindow(QMainWindow):
         input_box_layout.addWidget(self.input_box_status)
         self.pics_hbox.addWidget(self.input_box) #(self.lb)
         self.feed = PreviewThread(self.camera, self.video_frame)
-        #self.feed.start()
+        self.feed.start()
 
         # Init thread that manages Gantry...
         self.status_thread = StatusThread(self.gantry_status, self.processing_status)
@@ -896,20 +901,111 @@ class MainWindow(QMainWindow):
 
         pass
 
+    # verticies = (
+    #     (4, -8, -12),
+    #     (4, 8, -12),
+    #     (-4, 8, -12),
+    #     (-4, -8, -12),
+    #     (4, -8, 12),
+    #     (4, 8, 12),
+    #     (-4, -8, 12),
+    #     (-4, 8, 12)
+    # )
 
+# Make each unit 1mm
+# Guessing gantry "box" is around 1ft x 2ft x 3ft ~ 1ft=300mm
 verticies = (
-    (4, -4, -4),
-    (4, 4, -4),
-    (-4, 4, -4),
-    (-4, -4, -4),
-    (4, -4, 4),
-    (4, 4, 4),
-    (-4, -4, 4),
-    (-4, 4, 4)
+    (300, -600, -900),
+    (300, 600, -900),
+    (-300, 600, -900),
+    (-300, -600, -900),
+    (300, -600, 900),
+    (300, 600, 900),
+    (-300, -600, 900),
+    (-300, 600, 900)
 )
 
-
 verticies = numpy.hstack(verticies).reshape(-1,3).astype(numpy.float32)
+
+vertex_buffer_data = [
+    -300.0,-300.0,-300.0, # triangle 1 : begin
+    -300.0,-300.0, 300.0,
+    -300.0, 300.0, 300.0, # triangle 1 : end
+    300.0, 300.0,-300.0, # triangle 2 : begin
+    -300.0,-300.0,-300.0,
+    -300.0, 300.0,-300.0, # triangle 2 : end
+    300.0,-300.0, 300.0,
+    -300.0,-300.0,-300.0,
+    300.0,-300.0,-300.0,
+    300.0, 300.0,-300.0,
+    300.0,-300.0,-300.0,
+    -300.0,-300.0,-300.0,
+    -300.0,-300.0,-300.0,
+    -300.0, 300.0, 300.0,
+    -300.0, 300.0,-300.0,
+    300.0,-300.0, 300.0,
+    -300.0,-300.0, 300.0,
+    -300.0,-300.0,-300.0,
+    -300.0, 300.0, 300.0,
+    -300.0,-300.0, 300.0,
+    300.0,-300.0, 300.0,
+    300.0, 300.0, 300.0,
+    300.0,-300.0,-300.0,
+    300.0, 300.0,-300.0,
+    300.0,-300.0,-300.0,
+    300.0, 300.0, 300.0,
+    300.0,-300.0, 300.0,
+    300.0, 300.0, 300.0,
+    300.0, 300.0,-300.0,
+    -300.0, 300.0,-300.0,
+    300.0, 300.0, 300.0,
+    -300.0, 300.0,-300.0,
+    -300.0, 300.0, 300.0,
+    300.0, 300.0, 300.0,
+    -300.0, 300.0, 300.0,
+    300.0,-300.0, 300.0]
+
+vertex_buffer_data = numpy.array(vertex_buffer_data, dtype=numpy.float32)
+
+color_buffer_data = [
+    0.583,  0.771,  0.014,
+    0.609,  0.115,  0.436,
+    0.327,  0.483,  0.844,
+    0.822,  0.569,  0.201,
+    0.435,  0.602,  0.223,
+    0.310,  0.747,  0.185,
+    0.597,  0.770,  0.761,
+    0.559,  0.436,  0.730,
+    0.359,  0.583,  0.152,
+    0.483,  0.596,  0.789,
+    0.559,  0.861,  0.639,
+    0.195,  0.548,  0.859,
+    0.014,  0.184,  0.576,
+    0.771,  0.328,  0.970,
+    0.406,  0.615,  0.116,
+    0.676,  0.977,  0.133,
+    0.971,  0.572,  0.833,
+    0.140,  0.616,  0.489,
+    0.997,  0.513,  0.064,
+    0.945,  0.719,  0.592,
+    0.543,  0.021,  0.978,
+    0.279,  0.317,  0.505,
+    0.167,  0.620,  0.077,
+    0.347,  0.857,  0.137,
+    0.055,  0.953,  0.042,
+    0.714,  0.505,  0.345,
+    0.783,  0.290,  0.734,
+    0.722,  0.645,  0.174,
+    0.302,  0.455,  0.848,
+    0.225,  0.587,  0.040,
+    0.517,  0.713,  0.338,
+    0.053,  0.959,  0.120,
+    0.393,  0.621,  0.362,
+    0.673,  0.211,  0.457,
+    0.820,  0.883,  0.371,
+    0.982,  0.099,  0.879]
+
+color_buffer_data = numpy.array(color_buffer_data, dtype=numpy.float32)
 
 small_verticies = (
     (1, -1, -1),
@@ -936,6 +1032,37 @@ edges = (
     (5, 4),
     (5, 7)
 )
+
+# void main() {
+#     gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
+# }
+VERTEX_SHADER = '''
+#version 120
+
+attribute vec3 a_position;
+attribute vec3 a_color;
+
+varying vec3 in_color;
+
+void main() {
+  gl_Position = gl_ModelViewProjectionMatrix * vec4(a_position.xyz, 1);
+  in_color = a_color;
+}
+'''
+
+# void main()
+# {
+#   gl_FragColor = vec4(1.0, 1.0, 0.0, 1.0);
+# }
+FRAGMENT_SHADER = '''
+#version 120
+
+varying vec3 in_color;
+
+void main() {
+  gl_FragColor = vec4(in_color, 1.0);
+}
+'''
 
 
 def Cube():
@@ -978,6 +1105,13 @@ class GfxWindow(QDialog):
 
         self.gfx_widget = OpenGLWidget(self, self.parent)
 
+        format = QSurfaceFormat()
+        format.setDepthBufferSize(24);
+        format.setStencilBufferSize(8);
+        format.setVersion(2, 1);
+        #format.setProfile(QSurfaceFormat.CoreProfile);
+        #self.gfx_widget.setFormat(format)
+
         down = QShortcut(Qt.Key_Down, self, self.gfx_widget.changePerspective)
         up = QShortcut(Qt.Key_Up, self, self.gfx_widget.changePerspective2)
         right = QShortcut(Qt.Key_Right, self, self.gfx_widget.changePerspective3)
@@ -985,6 +1119,7 @@ class GfxWindow(QDialog):
 
         self.move(self.main.window().x() - 600, self.main.window().y() + 400)
         self.setWindowTitle("GFX View")
+
         self.show()
         QCoreApplication.processEvents()
 
@@ -1006,7 +1141,11 @@ class GfxWindow(QDialog):
         self.old_y = float(GFX_WINDOW_HEIGHT/2 - event.pos().y())
 
         val = float((GFX_WINDOW_WIDTH/2)*(GFX_WINDOW_HEIGHT/2)-pow(self.old_x, 2)-pow(self.old_y, 2))
-        self.old_z = sqrt(val)
+        try:
+            self.old_z = sqrt(val)
+        except:
+            self.setMouseTracking(False)
+            pass
         print("complete..")
 
     def mouseReleaseEvent(self, event):
@@ -1058,34 +1197,90 @@ class OpenGLWidget(QOpenGLWidget):
         self.parent = parent
         self.i = 0
         self.z = 10.0
-        self.zoom = 90
+        self.zoom = 120
         self.change = False
         self.rotation = False
         self.CT = None
 
     def initializeGL(self):
+
+        # not valid in 2.x core profile...
+        #self.vao = glGenVertexArrays(1)
+        #GL.glBindVertexArray(self.vao)
+
+
         """
-        vertices = numpy.array([0.0, 1.0, -1.0, -1.0, 1.0, -1.0], dtype=numpy.float32)
+        self.vao = QOpenGLVertexArrayObject()
+        if not self.vao.create():
+            print("error creating")
+            return
 
-        bufferId = GL.glGenBuffers(1)
-        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, bufferId)
-        GL.glBufferData(GL.GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL.GL_STATIC_DRAW)
-
-        GL.glEnableVertexAttribArray(0)
-        GL.glVertexAttribPointer(0, 2, GL.GL_FLOAT, GL.GL_FALSE, 0, None)
-
-        GL.glRotatef(20, 3, 1, 1)
+        self.vao.bind()
         """
-        GL.glViewport(0, 0, GFX_WINDOW_WIDTH, GFX_WINDOW_HEIGHT)
+
+        # works for apple ;) todo: learn more about VAOs
+        vao = GL.GLuint()
+        glGenVertexArraysAPPLE(1, vao)
+        glBindVertexArrayAPPLE(vao)
+
+        #self.vs = shaders.compileShader(VERTEX_SHADER, GL.GL_VERTEX_SHADER)
+
+        #self.fs = shaders.compileShader(FRAGMENT_SHADER, GL.GL_FRAGMENT_SHADER)
+        #self.shader = shaders.compileProgram(self.vs, self.fs)
+
+        self.program = GL.glCreateProgram()
+        vertex = GL.glCreateShader(GL.GL_VERTEX_SHADER)
+        fragment = GL.glCreateShader(GL.GL_FRAGMENT_SHADER)
+
+        # Set shaders source
+        GL.glShaderSource(vertex, VERTEX_SHADER)
+        GL.glShaderSource(fragment, FRAGMENT_SHADER)
+
+        # Compile shaders
+        GL.glCompileShader(vertex)
+        if not GL.glGetShaderiv(vertex, GL.GL_COMPILE_STATUS):
+            error = GL.glGetShaderInfoLog(vertex).decode()
+            print("Vertex shader compilation error: {}".format(error))
+
+        GL.glCompileShader(fragment)
+        if not GL.glGetShaderiv(fragment, GL.GL_COMPILE_STATUS):
+            error = GL.glGetShaderInfoLog(fragment).decode()
+            print(error)
+            raise RuntimeError("Fragment shader compilation error")
+
+        GL.glAttachShader(self.program, vertex)
+        GL.glAttachShader(self.program, fragment)
+        GL.glLinkProgram(self.program)
+
+        if not GL.glGetProgramiv(self.program, GL.GL_LINK_STATUS):
+            print(GL.glGetProgramInfoLog(self.program))
+            raise RuntimeError('Linking error')
+
+        GL.glDetachShader(self.program, vertex)
+        GL.glDetachShader(self.program, fragment)
+
+        self.vertexBuffer = GL.glGenBuffers(1)
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.vertexBuffer)
+        GL.glBufferData(GL.GL_ARRAY_BUFFER, vertex_buffer_data.nbytes, vertex_buffer_data, GL.GL_STATIC_DRAW)
+
+        self.colorBuffer = GL.glGenBuffers(1)
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.colorBuffer)
+        GL.glBufferData(GL.GL_ARRAY_BUFFER, color_buffer_data.nbytes, color_buffer_data, GL.GL_STATIC_DRAW)
+
+        # vs = shaders.compileShader(VERTEX_SHADER, GL.GL_VERTEX_SHADER)
+        # fs = shaders.compileShader(FRAGMENT_SHADER, GL.GL_FRAGMENT_SHADER)
+
+        #GL.glViewport(0, 0, GFX_WINDOW_WIDTH, GFX_WINDOW_HEIGHT)
 
         #GL.glMatrixMode(GL.GL_MODELVIEW)
         #GL.glLoadIdentity()
-        GL.glClearColor(1.0, 1.0, 1.0, 0.0)
+        GL.glClearColor(0.0, 1.0, 1.0, 0.0)
         GL.glMatrixMode(GL.GL_PROJECTION)
         GL.glLoadIdentity()
-        GLU.gluPerspective(90, (GFX_WINDOW_WIDTH / GFX_WINDOW_HEIGHT), 1, 50.0)
+        GLU.gluPerspective(120, (GFX_WINDOW_WIDTH / GFX_WINDOW_HEIGHT), 1, 4000.0)
 
         GL.glMatrixMode(GL.GL_MODELVIEW)
+        GLU.gluLookAt(0, 0, 1500, 0, 0, 0, 0, 1, 0)
         GL.glTranslatef(0.0, 0.0, -20)
 
         #GL.glRotatef(20, 3, 1, 1)
@@ -1100,6 +1295,10 @@ class OpenGLWidget(QOpenGLWidget):
         self.angle = None
         self.CT = GL.glGetFloatv(GL.GL_MODELVIEW_MATRIX)
         self.obj = OBJ("assets/syringe.obj", swapyz=True)
+
+        GL.glEnable(GL.GL_DEPTH_TEST);
+        GL.glDepthFunc(GL.GL_LESS);
+
         pass
 
     def moveCube(self):
@@ -1116,26 +1315,44 @@ class OpenGLWidget(QOpenGLWidget):
             GL.glMatrixMode(GL.GL_PROJECTION)
             GL.glLoadIdentity()
 
-            GLU.gluPerspective(self.zoom, (GFX_WINDOW_WIDTH / GFX_WINDOW_HEIGHT), 1, 50.0)
+            GLU.gluPerspective(self.zoom, (GFX_WINDOW_WIDTH / GFX_WINDOW_HEIGHT), 1, 4000.0)
             GL.glMatrixMode(GL.GL_MODELVIEW)
 
             if self.rotation:
                 #GL.glMatrixMode(GL.GL_MODEL_VIEW)
                 GL.glLoadMatrixf(self.CT)
-                GL.glRotatef(self.angle, self.ux, self.uy, self.uz)
+                GL.glRotatef(self.angle, self.ux, self.uy, 0)
                 self.CT = GL.glGetFloatv(GL.GL_MODELVIEW_MATRIX)
                 self.rotation=False
                 pass
 
             #if self.change:
             GL.glLoadMatrixf(self.CT)
-            #GLU.gluLookAt(0, 10, self.z, 0, 0, 0, 0, 1, 0)
+            #GLU.gluLookAt(0, 0, self.z, 0, 0, 0, 0, 1, 0)
             self.change = False
             #GL.glMatrixMode(GL.GL_PROJECTION)
             #GL.glTranslatef(0.0, 0.0, -20)
             #GL.glRotatef(20, 3, 1, 1)
             GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
             GL.glColor3d(0, 0, 0);
+
+
+            GL.glUseProgram(self.program)
+
+            GL.glEnableVertexAttribArray(1)
+            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.colorBuffer)
+            GL.glVertexAttribPointer(1, 3, GL.GL_FLOAT, GL.GL_FALSE, 0, None)
+
+            GL.glEnableVertexAttribArray(0)
+            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.vertexBuffer)
+            GL.glVertexAttribPointer(0, 3, GL.GL_FLOAT, GL.GL_FALSE, 0, None)
+            GL.glDrawArrays(GL.GL_TRIANGLES, 0, 36)
+            GL.glDisableVertexAttribArray(0)
+            GL.glDisableVertexAttribArray(1)
+
+
+
+            GL.glUseProgram(0)
 
             Cube()
 
@@ -1144,7 +1361,13 @@ class OpenGLWidget(QOpenGLWidget):
             SmallCube()
             GL.glPopMatrix()
 
+            GL.glPushMatrix()
+            GL.glTranslatef(000, 000, 900)
+            GL.glScalef(30, 30, 30)
+            #GL.glRotatef(180, 0, 0, 0)
             GL.glCallList(self.obj.gl_list)
+            GL.glPopMatrix()
+
 
         #GL.glDrawArrays(GL.GL_TRIANGLES, 0, 3)
 
