@@ -139,7 +139,7 @@ int move_cap_to_IL(){
 		delay(100);
 		z_depth = move_stepper(Z_AXIS, z_coord, FORWARD);
 	}
-	Serial.println("z_depth 2: ");
+	Serial.println("z_depth 2: "); // todo: need to be here?
 	Serial.println(z_depth);
 	char output[50];
     sprintf(output, "x: %d y: %d", result[0], result[1]);
@@ -448,10 +448,11 @@ int move_stepper(int axis, int nSteps, int dir){
          */
 		
 		z_depth = depth_finder();
-		Serial.println("z_depth 1: ");
+		Serial.println("z_depth 1: "); // todo: need to be here?
 		Serial.println(z_depth);
 		return(z_depth);
 	}
+
 
 	for(i=0; i<nSteps; i++){
 		if(enable != 0){
@@ -461,6 +462,8 @@ int move_stepper(int axis, int nSteps, int dir){
 		delay(2);
 		digitalWrite(stepPin, LOW);
 		delay(2);
+
+		send_position_update(axis, dir);
 		
 		//char output[20];
 		//sprintf(output, "moving: %d", i);
@@ -485,17 +488,19 @@ int depth_finder(){
 	capOut = digitalRead (CAP_SENSE_PIN);
 		while(capOut == 0){
 			if(enable == 0){
-			//Serial.println(z_depth);
-			capOut = digitalRead(CAP_SENSE_PIN);
-			#if HEADLESS
-			//Serial.println("cap out");
-			Serial.println(capOut);
-			#endif
-			digitalWrite(STEP_PIN_Z, HIGH);
-			delay(10);
-			z_depth++;
-			digitalWrite(STEP_PIN_Z, LOW);
-			delay(10);
+				//Serial.println(z_depth);
+				capOut = digitalRead(CAP_SENSE_PIN);
+				#if HEADLESS
+				//Serial.println("cap out");
+				Serial.println(capOut);
+				#endif
+				digitalWrite(STEP_PIN_Z, HIGH);
+				delay(10);
+				z_depth++;
+				digitalWrite(STEP_PIN_Z, LOW);
+				delay(10);
+
+				send_position_update(Z_AXIS, FORWARD);
 			}
 		}
 		for(int n = 0; n<10; n++){
@@ -620,6 +625,16 @@ void decode_coordinate(const char* msg) {
     sprintf(output, "x: %d y: %d", result[0], result[1]);
     status_msg(output);
 }
+
+void send_position_update(int axis, int dir) {
+	char c_axis = '0' + axis;
+	char c_dir = '0' + dir;
+	Serial.write(CMD_POSITION_UPDATE);
+	Serial.write(c_axis);
+	Serial.write(c_dir);
+	Serial.println("");
+}
+
 /**********************************
  * END HELPER FUNCTIONS
 ***********************************/

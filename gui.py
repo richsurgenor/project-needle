@@ -118,7 +118,7 @@ def set_forwarding_settings():
 
     GANTRY_ON = 1
     MOCK_MODE_IMAGE_PROCESSING = 0
-    MOCK_MODE_GANTRY = 0
+    MOCK_MODE_GANTRY = 1
 
     SAVE_RAWIMG = 1
 
@@ -155,7 +155,7 @@ def set_forwarding_settings():
 
 FAKE_INPUT_IMG = 1
 if FAKE_INPUT_IMG:
-    FAKE_INPUT_IMG_NAME = "./justin_python/justin1.jpg"
+    FAKE_INPUT_IMG_NAME = "./test_images/rich.jpg"
     CAMERA_RESOLUTION_WIDTH = 1000#3280
     CAMERA_RESOLUTION_HEIGHT = 1000#2464
     GUI_IMAGE_SIZE_WIDTH = 500 #550  # 640
@@ -644,8 +644,9 @@ class MainWindow(QMainWindow):
 
         self.show()
 
-        gfx_thread = GraphicsThread(self)
-        gfx_thread.start()
+        self.gfx_thread = GraphicsThread(self)
+        self.gfx_thread.start()
+        self.gc.gfx_thread = self.gfx_thread
 
 
     def get_active_mode(self):
@@ -656,7 +657,7 @@ class MainWindow(QMainWindow):
         self.output_box.display_coords.repaint()
 
     def display_injection_site(self, x, y, x_steps, y_steps):
-        self.output_box.display_injection_site_label.setText("Injection Site(mm): x: " + str(x) + " away. y: " + str(y) + " down." \
+        self.output_box.display_injection_site_label.setText("Injection Site(mm): x: {0:.2f} away. y: {0:.2f} down.".format(x, y) \
                 + "\nInjection Site(steps): x: " + str(x_steps) + " away. y: " + str(y_steps) + " down.")
         self.output_box.display_injection_site_label.repaint()
 
@@ -898,7 +899,8 @@ class MainWindow(QMainWindow):
         pass
 
     def debug_cmds_event(self):
-
+        for i in range(0, 8000):
+            self.gfx_thread.move_needle(2, 0)
         pass
 
     # verticies = (
@@ -912,17 +914,27 @@ class MainWindow(QMainWindow):
     #     (-4, 8, 12)
     # )
 
+# in mm
+STARTING_CAMERA_HEIGHT=100
+STARTING_CAMERA_DISTANCE=400 #900
+GANTRY_WIDTH = 108.0 #152.0
+
+BOX_HEIGHT = 140.0
+GANTRY_HEIGHT = 60.0
+
+GANTRY_DEPTH = 265 #673.0
+
 # Make each unit 1mm
 # Guessing gantry "box" is around 1ft x 2ft x 3ft ~ 1ft=300mm
 verticies = (
-    (300, -600, -900),
-    (300, 600, -900),
-    (-300, 600, -900),
-    (-300, -600, -900),
-    (300, -600, 900),
-    (300, 600, 900),
-    (-300, -600, 900),
-    (-300, 600, 900)
+    (GANTRY_WIDTH, -(BOX_HEIGHT+GANTRY_HEIGHT), -GANTRY_DEPTH),
+    (GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), -GANTRY_DEPTH),
+    (-GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), -GANTRY_DEPTH),
+    (-GANTRY_WIDTH, -(BOX_HEIGHT+GANTRY_HEIGHT), -GANTRY_DEPTH),
+    (GANTRY_WIDTH, -(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH),
+    (GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH),
+    (-GANTRY_WIDTH, -(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH),
+    (-GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH)
 )
 
 verticies = numpy.hstack(verticies).reshape(-1,3).astype(numpy.float32)
@@ -934,49 +946,49 @@ verticies = numpy.hstack(verticies).reshape(-1,3).astype(numpy.float32)
 #         pass
 #     pass
 
+
 vertex_buffer_data = [
-    -300.0,-600.0,-900.0, # red face
-    -300.0,-600.0, 900.0,
-    -300.0, 600.0, 900.0,
-    -300.0,-600.0,-900.0,
-    -300.0, 600.0, 900.0,
-    -300.0, 600.0,-900.0,
+    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH, # red face
+    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
 
-    300.0, 600.0,-900.0, # green face
-    -300.0,-600.0,-900.0,
-    -300.0, 600.0,-900.0,
-    300.0, 600.0,-900.0,
-    300.0,-600.0,-900.0,
-    -300.0,-600.0,-900.0,
+    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH, # green face
+    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
+    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
 
-    300.0,-600.0, 900.0, # blue face
-    -300.0,-600.0,-900.0,
-    300.0,-600.0,-900.0,
-    300.0,-600.0, 900.0,
-    -300.0,-600.0, 900.0,
-    -300.0,-600.0,-900.0,
+    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH, # blue face
+    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
 
-
-    300.0, 600.0, 900.0, # yellow face
-    300.0,-600.0,-900.0,
-    300.0, 600.0,-900.0,
-    300.0,-600.0,-900.0,
-    300.0, 600.0, 900.0,
-    300.0,-600.0, 900.0,
+    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH, # yellow face
+    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
     
-    300.0, 600.0, 900.0, # light blue face
-    300.0, 600.0,-900.0,
-    -300.0, 600.0,-900.0,
-    300.0, 600.0, 900.0,
-    -300.0, 600.0,-900.0,
-    -300.0, 600.0, 900.0,
-    
-    -300.0, 600.0, 900.0, # pink face
-    -300.0,-600.0, 900.0,
-    300.0,-600.0, 900.0,
-    300.0, 600.0, 900.0,
-    -300.0, 600.0, 900.0,
-    300.0,-600.0, 900.0]
+    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH, # light blue face
+    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
+
+    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH, # pink face
+    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH]
 
 vertex_buffer_data = numpy.array(vertex_buffer_data, dtype=numpy.float32)
 
@@ -1127,7 +1139,6 @@ void main() {
 }
 '''
 
-
 def Cube():
     GL.glBegin(GL.GL_LINES)
     for edge in edges:
@@ -1143,6 +1154,11 @@ def SmallCube():
             GL.glVertex3fv(small_verticies[vertex])
     GL.glEnd()
 
+X_MM_PER_STEP = 0.01
+Y_MM_PER_STEP = 0.04
+Z_MM_PER_STEP = 0.04
+FORWARD = 0
+BACKWARD = 1
 
 class GraphicsThread(QThread):
     """
@@ -1154,8 +1170,45 @@ class GraphicsThread(QThread):
 
         self.window = GfxWindow(self, self.parent)
 
+        self.needle_counter = 0
+
         # QLayout
         print("window opened....")
+
+        #for i in range(0, 3875):
+        #    self.move_needle(1, 0)
+            #self.msleep(1)
+
+    #X_AXIS = 0
+    #Y_AXIS = 1
+    #Z_AXIS = 2
+    # define FORWARD 0
+    # define BACKWARD 1
+
+    def move_needle(self, axis, dir):
+        if axis == 0: # x axis
+            gfx_axis = 0
+            amt = X_MM_PER_STEP
+            if dir == BACKWARD:
+                amt = -1 * amt
+        elif axis == 1:
+            gfx_axis = 2
+            amt = Y_MM_PER_STEP
+            if dir == BACKWARD: # fwd for z axis is actually going down on gantry
+                amt = -1 * amt
+        elif axis == 2:
+            gfx_axis = 1
+            amt = Z_MM_PER_STEP
+            if dir == FORWARD:
+                amt = -1 * amt
+
+        self.window.gfx_widget.needle_position[gfx_axis] = self.window.gfx_widget.needle_position[gfx_axis] + amt
+        self.needle_counter = self.needle_counter + 1
+        if self.needle_counter == 100:
+            self.window.gfx_widget.update()
+            qApp.processEvents()
+            self.needle_counter = 0
+
 
 class GfxWindow(QDialog):
 
@@ -1188,7 +1241,7 @@ class GfxWindow(QDialog):
 
         self.i = 1
 
-        self.gfx_widget.moveCube()
+        #self.gfx_widget.moveCube()
 
     #def keyPressEvent(self, eventQKeyEvent):
     #    eventQKeyEvent.
@@ -1196,7 +1249,7 @@ class GfxWindow(QDialog):
 
     def mousePressEvent(self, event):
         pos = event.pos()
-        print("pressed. coords: {}".format(pos))
+        #print("pressed. coords: {}".format(pos))
         self.setMouseTracking(True)
 
         # Convert window coordinates to cartesian
@@ -1209,15 +1262,15 @@ class GfxWindow(QDialog):
         except:
             self.setMouseTracking(False)
             pass
-        print("complete..")
+        #print("complete..")
 
     def mouseReleaseEvent(self, event):
         pos = event.pos()
-        print("released. coords: {}".format(pos))
+        #print("released. coords: {}".format(pos))
         self.setMouseTracking(False)
 
     def mouseMoveEvent(self, event):
-        print("coords: {}".format(event.pos()))
+        #print("coords: {}".format(event.pos()))
         pos = event.pos()
         self.new_x = float(pos.x() - GFX_WINDOW_WIDTH / 2)
         self.new_y = float(GFX_WINDOW_HEIGHT / 2 - pos.y())
@@ -1235,7 +1288,7 @@ class GfxWindow(QDialog):
         self.gfx_widget.angle = asin(
             sqrt(pow(ux, 2) + pow(uy, 2) + pow(uz, 2)) / ( (GFX_WINDOW_WIDTH/2) * (GFX_WINDOW_HEIGHT/2) )) * (180 / pi)
 
-        print("this is angle: {}".format(self.gfx_widget.angle))
+        #print("this is angle: {}".format(self.gfx_widget.angle))
         self.gfx_widget.ux = ux
         self.gfx_widget.uy = uy
         self.gfx_widget.uz = uz
@@ -1259,11 +1312,12 @@ class OpenGLWidget(QOpenGLWidget):
         self.window = window
         self.parent = parent
         self.i = 0
-        self.z = 10.0
+        self.z = 800.0
         self.zoom = 120
         self.change = False
         self.rotation = False
         self.CT = None
+        self.needle_position = [-GANTRY_WIDTH, GANTRY_HEIGHT, -GANTRY_DEPTH+40]
 
     def initializeGL(self):
 
@@ -1282,9 +1336,9 @@ class OpenGLWidget(QOpenGLWidget):
         """
 
         # works for apple ;) todo: learn more about VAOs
-        vao = GL.GLuint()
-        glGenVertexArraysAPPLE(1, vao)
-        glBindVertexArrayAPPLE(vao)
+        #vao = GL.GLuint()
+        #glGenVertexArraysAPPLE(1, vao)
+        #glBindVertexArrayAPPLE(vao)
 
         #self.vs = shaders.compileShader(VERTEX_SHADER, GL.GL_VERTEX_SHADER)
 
@@ -1343,8 +1397,8 @@ class OpenGLWidget(QOpenGLWidget):
         GLU.gluPerspective(120, (GFX_WINDOW_WIDTH / GFX_WINDOW_HEIGHT), 1, 4000.0)
 
         GL.glMatrixMode(GL.GL_MODELVIEW)
-        GLU.gluLookAt(0, 0, 1500, 0, 0, 0, 0, 1, 0)
-        GL.glTranslatef(0.0, 0.0, -20)
+        GLU.gluLookAt(0, STARTING_CAMERA_HEIGHT, STARTING_CAMERA_DISTANCE, 0, 0, 0, 0, 1, 0)
+        #GL.glTranslatef(0.0, 0.0, -20)
 
         #GL.glRotatef(20, 3, 1, 1)
 
@@ -1359,10 +1413,10 @@ class OpenGLWidget(QOpenGLWidget):
         self.CT = GL.glGetFloatv(GL.GL_MODELVIEW_MATRIX)
         self.obj = OBJ("assets/syringe.obj", swapyz=True)
 
-        GL.glEnable(GL.GL_DEPTH_TEST);
-        GL.glDepthFunc(GL.GL_LESS);
+        #GL.glEnable(GL.GL_DEPTH_TEST);
+        #GL.glDepthFunc(GL.GL_LESS);
 
-        GL.glEnable(GL.GL_BLEND);
+        GL.glEnable(GL.GL_BLEND)
         GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA);
 
         pass
@@ -1400,11 +1454,11 @@ class OpenGLWidget(QOpenGLWidget):
             #GL.glTranslatef(0.0, 0.0, -20)
             #GL.glRotatef(20, 3, 1, 1)
             GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
-            GL.glColor3d(0, 0, 0);
+            GL.glColor3d(0, 0, 0)
 
             GL.glPushMatrix()
-            GL.glTranslatef(self.i+100, self.i, 500)
-            GL.glScalef(30, 30, 30)
+            GL.glTranslatef(self.needle_position[0], self.needle_position[1], self.needle_position[2])
+            GL.glScalef(20, 20, 20)
             GL.glRotatef(180, 0, 0, 0)
             GL.glCallList(self.obj.gl_list)
             GL.glPopMatrix()
@@ -1426,13 +1480,10 @@ class OpenGLWidget(QOpenGLWidget):
 
             Cube()
 
-            GL.glPushMatrix()
-            GL.glTranslatef(self.i * 0.01, self.i * 0.01, 0)
-            SmallCube()
-            GL.glPopMatrix()
-
-
-
+            # GL.glPushMatrix()
+            # GL.glTranslatef(self.i * 0.01, self.i * 0.01, 0)
+            # SmallCube()
+            # GL.glPopMatrix()
 
         #GL.glDrawArrays(GL.GL_TRIANGLES, 0, 3)
 

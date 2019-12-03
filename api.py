@@ -71,6 +71,12 @@ class Processor(AbstractProcessor):
         self.selection = None
         self.clip_rails_numpy = clip_rails_numpy
 
+        my_x = self.mm_to_steps(X_AXIS, 21.75)
+        my_y = self.mm_to_steps(Y_AXIS, 12)
+        my_z = self.mm_to_steps(Z_AXIS, 10)
+
+        print("x: {} y: {} z: {}".format(my_x, my_y, my_z))
+
     def apply_clahe(self, image):
         self.img_in = image
         return iv.apply_clahe(self.img_in, 7.0, (40, 40))
@@ -137,6 +143,11 @@ def get_direction(current, target):
     else:
         return -1
 
+STEPS_TO_Y_HOME = 3875 # 155mm
+NEEDLE_X_PROJ_STEPS = 2175
+NEEDLE_Y_PROJ_STEPS = 300
+NEEDLE_Z_PROJ_STEPS = 250
+NEEDLE_Z_INSERTION_DEPTH = 250
 class GantryMock(threading.Thread):
     """
     simulate gantry
@@ -167,13 +178,86 @@ class GantryMock(threading.Thread):
             elif req == REQ_MOVE_Y_HOME:
                 pass
             elif req == REQ_GO_TO_WORK:
-                # Now that we are ready to go, gantry needs coordinate!
-                self.send_cmd(CMD_WAIT_COORDINATE)
+                self.y_go_to_home()
+                time.sleep(2)
+                self.move_cap_to_il()
+                time.sleep(5)
+                self.position_needle()
+                time.sleep(3)
+                self.inject_needle()
+                time.sleep(5)
+                self.pull_needle()
+                time.sleep(3)
+                self.move_back_from_il()
+                self.send_cmd(CMD_STATUS_MSG, "Sequence complete!")
+                #self.send_cmd(CMD_POSITION_UPDATE, "00")
             elif req == REQ_WAIT_COORDINATE:
+                self.des_point['x'] = int(line[1:5].decode())
+                self.des_point['y'] = int(line[5:9].decode())
+                print("Coordinate received by GantryMock!")
                 print(line)
-
             else:
                 print("Unknown command passed to mock gantry interface..")
+
+    def y_go_to_home(self):
+        self.send_cmd(CMD_STATUS_MSG, "Moving to home position...")
+        for i in range(0, STEPS_TO_Y_HOME):
+            self.send_cmd(CMD_POSITION_UPDATE, "10")
+            time.sleep(0.001)
+
+    def move_cap_to_il(self):
+        self.send_cmd(CMD_STATUS_MSG, "Moving to insertion location...")
+        for i in range(0, self.des_point['x']):
+            self.send_cmd(CMD_POSITION_UPDATE, "00")
+            time.sleep(0.001)
+        for i in range(0, self.des_point['y']):
+            self.send_cmd(CMD_POSITION_UPDATE, "10")
+            time.sleep(0.001)
+
+        # lets say 1500 steps
+        for i in range(0, 1500):
+            self.send_cmd(CMD_POSITION_UPDATE, "20")
+            time.sleep(0.001)
+
+    def move_back_from_il(self):
+        self.send_cmd(CMD_STATUS_MSG, "Moving back from IL...")
+        # lets say 1500 steps
+        for i in range(0, 1500-NEEDLE_Z_PROJ_STEPS+NEEDLE_Z_INSERTION_DEPTH):
+            self.send_cmd(CMD_POSITION_UPDATE, "21")
+            time.sleep(0.001)
+
+        for i in range(0, self.des_point['x'] + NEEDLE_X_PROJ_STEPS):
+            self.send_cmd(CMD_POSITION_UPDATE, "01")
+            time.sleep(0.001)
+        for i in range(0, self.des_point['y'] + STEPS_TO_Y_HOME - NEEDLE_Y_PROJ_STEPS):
+            self.send_cmd(CMD_POSITION_UPDATE, "11")
+            time.sleep(0.001)
+
+    def position_needle(self):
+        self.send_cmd(CMD_STATUS_MSG, "Positioning needle...")
+        for i in range(0, NEEDLE_Z_PROJ_STEPS):
+            self.send_cmd(CMD_POSITION_UPDATE, "21")
+            time.sleep(0.001)
+        for i in range(0, NEEDLE_Y_PROJ_STEPS):
+            self.send_cmd(CMD_POSITION_UPDATE, "11")
+            time.sleep(0.001)
+        for i in range(0, NEEDLE_X_PROJ_STEPS):
+            self.send_cmd(CMD_POSITION_UPDATE, "00")
+            time.sleep(0.001)
+
+    def inject_needle(self):
+        #todo: move only needle tip instead of entire model
+        self.send_cmd(CMD_STATUS_MSG, "Injecting needle...")
+        for i in range(0, NEEDLE_Z_INSERTION_DEPTH):
+            self.send_cmd(CMD_POSITION_UPDATE, "20")
+            time.sleep(0.001)
+
+    def pull_needle(self):
+        #todo: move only needle tip instead of entire model
+        self.send_cmd(CMD_STATUS_MSG, "Pulling needle...")
+        for i in range(0, NEEDLE_Z_INSERTION_DEPTH):
+            self.send_cmd(CMD_POSITION_UPDATE, "21")
+            time.sleep(0.001)
 
     def initialize_gantry(self):
         time.sleep(1)
@@ -347,6 +431,7 @@ class GantryController(AbstractGantryController):
 
         self.stopped = False
         self.coordinate = None
+        self.gfx_thread = None
 
     def run(self):
         print("started gantry controller thread...")
@@ -376,7 +461,12 @@ class GantryController(AbstractGantryController):
                     """
                     pass
                 elif cmd == CMD_POSITION_UPDATE:
-                    print("Received position update...")
+                    #print("Received position update!")
+                    axis = int(chr(line[1]))
+                    dir = int(chr(line[2]))
+                    self.gfx_thread.move_needle(axis, dir)
+                    pass
+                    #print("Received position update...")
                 elif cmd == CMD_COORDINATE_RECEIVED:
                     print("Arduino received coordinates sent.")
                     print("Pending gantry start...")

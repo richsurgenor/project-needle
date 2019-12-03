@@ -72,3 +72,4 @@ void    send_cmd(int cmd);
 void    status_msg(const char* msg);
 int     process_req(const char* in_cmd);
 void 	wait_for_begin_cmd();
+void send_position_update(int axis, int dir);
