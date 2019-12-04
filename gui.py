@@ -144,7 +144,7 @@ def set_forwarding_settings():
 
     CLIP_RAILS_THROUGH_NUMPY = True
 
-FAKE_INPUT_IMG = 0
+FAKE_INPUT_IMG = 1
 if FAKE_INPUT_IMG:
     FAKE_INPUT_IMG_NAME = "./test_images/jackson.jpg"
     CAMERA_RESOLUTION_WIDTH = 1000#3280
@@ -820,8 +820,8 @@ class MainWindow(QMainWindow):
 
         # curious enough cvting to correct colors seems to throw off pts
         #if not USING_PI and not FORWARDING:
-        if isinstance(self.camera, FakeCamera) or isinstance(self.camera, Camera):
-            raw = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB)
+        #if isinstance(self.camera, FakeCamera) or isinstance(self.camera, Camera):
+        raw = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB)
         #if SAVE_RAWIMG:
         cv2.imwrite('gui-rawimg.jpg', raw)
         height, width, channels = raw.shape
