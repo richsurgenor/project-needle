@@ -143,7 +143,7 @@ def set_forwarding_settings():
     CROPPED_RESOLUTION_HEIGHT = 1000 # clip height because uneven distribution of light
 
     if not CROPPING_ENABLED:
-        factor = 4
+        factor = 2
         GUI_IMAGE_SIZE_WIDTH = CAMERA_RESOLUTION_WIDTH / factor
         GUI_IMAGE_SIZE_HEIGHT = CAMERA_RESOLUTION_HEIGHT / factor
     else:
@@ -153,9 +153,10 @@ def set_forwarding_settings():
 
     CLIP_RAILS_THROUGH_NUMPY = True
 
-FAKE_INPUT_IMG = 1
+FAKE_INPUT_IMG = 0
+
 if FAKE_INPUT_IMG:
-    FAKE_INPUT_IMG_NAME = "./test_images/rich.jpg"
+    FAKE_INPUT_IMG_NAME = "./test_images/jackson.jpg"
     CAMERA_RESOLUTION_WIDTH = 1000#3280
     CAMERA_RESOLUTION_HEIGHT = 1000#2464
     GUI_IMAGE_SIZE_WIDTH = 500 #550  # 640
@@ -163,7 +164,7 @@ if FAKE_INPUT_IMG:
     CROPPING_ENABLED = 0
     CROPPED_RESOLUTION_WIDTH = 2200
     CROPPED_RESOLUTION_HEIGHT = 2464
-    CLIP_RAILS_THROUGH_NUMPY=False
+    CLIP_RAILS_THROUGH_NUMPY=True
 
 def ui_main(fwd=False):
     """
@@ -226,7 +227,7 @@ class FakeCamera:
         # self.rawframe = cv2.resize(self.rawframe, dsize=(GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT), interpolation=cv2.INTER_CUBIC)
         # cv2.imwrite('testproc.jpg', self.rawframe)
         self.opened = False
-        #self.fakepic = cv2.cvtColor(self.rawframe, cv2.COLOR_RGB2BGR)
+        #self.rawframe = cv2.cvtColor(self.rawframe, cv2.COLOR_RGB2BGR)
 
     def get_frame(self):
         return self.rawframe
@@ -366,24 +367,60 @@ class QProcessedImageGroupBox(QGroupBox):
         self.parent = parent
         self._layout = QVBoxLayout()
         self._layout.setSpacing(0)
+        self._layout.setSizeConstraint(QLayout.SetMinimumSize)
+        self.split_holder = QWidget()
+        self.split_layout = QHBoxLayout()
+        self.split_layout.setSpacing(0)
+        self.coord_holder = QWidget()
+        #self.coord_holder.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+        self.coord_layout = QVBoxLayout()
+        self.coord_layout.setSpacing(0)
+        self.coord_holder.setLayout(self.coord_layout)
+
+        self.settings_holder = QWidget()
+        self.settings_layout = QVBoxLayout()
+        self.settings_layout.setSpacing(0)
+        self.settings_holder.setLayout(self.settings_layout)
+
         self.setLayout(self._layout)
         self.img = img
 
         self.image_label = QImageLabel("", img)
-        self.display_coords = QLabel("Coordinates(pixels): ")
-        self.display_injection_site_label = QLabel("Injection Site(mm): \nInjection Site(steps): ")
-        self.display_coords.setStyleSheet("font-weight: bold; color: red");
-        self.display_injection_site_label.setStyleSheet("font-weight: bold; color: red");
 
+        self.display_coords = QLabel("Coordinates(pixels): ")
+        self.display_injection_site_label = QLabel("Injection Site(mm):   \nInjection Site(steps): ")
+        self.display_coords.setStyleSheet("color: red");
+        self.display_injection_site_label.setStyleSheet("color: red");
+
+        #self.coord_layout.addWidget(self.image_label)
         self._layout.addWidget(self.image_label)
-        self._layout.addWidget(self.display_coords)
-        self._layout.addWidget(self.display_injection_site_label)
+        self.coord_layout.addWidget(self.display_coords)
+        self.coord_layout.addWidget(self.display_injection_site_label)
 
         self.points = None
+        self.chosen = None
 
+        self.use_masked_image = QCheckBox("Use Masked Image")
+        self.use_masked_image.setChecked(True)
+        self.use_masked_image.clicked.connect(self.change_use_masked_img)
+        self.settings_layout.addWidget(self.use_masked_image)
+        #self.settings_layout.setAlignment(Qt.AlignTop)
+
+        self.split_layout.addWidget(self.coord_holder)
+        self.split_layout.addWidget(self.settings_holder)
+        self.split_holder.setLayout(self.split_layout)
+
+        self._layout.setSizeConstraint(QLayout.SetFixedSize)
+
+        self._layout.addWidget(self.split_holder)
         # Configure mouse press on processed image widget
         self.image_label.mousePressEvent = self.get_pos
         #self.image_label.connect(self, pyqtSignal("clicked()"), self.getPos)
+        #self.coord_holder.sizeHint = lambda: QSize(50, 50)
+
+        self.coord_holder.setFixedHeight(70)
+        self.coord_holder.setFixedWidth(360)
+        self.settings_holder.setFixedHeight(64)
 
     def get_layout(self):
         return self._layout
@@ -420,10 +457,14 @@ class QProcessedImageGroupBox(QGroupBox):
             self.points = [(int(selected_x), int(selected_y))]
             self.parent.processor.centers = [(scaled_x, scaled_y)]
             chosen = 0 # only one point...
-            self.parent.draw_processed_img_with_pts(self.parent.masked_img, self.points, chosen)
+            self.chosen = 0
+            if self.use_masked_image.isChecked():
+                self.parent.draw_processed_img_with_pts(self.parent.masked_img, self.points, chosen)
+            else:
+                self.parent.draw_processed_img_with_pts(self.parent.last_rawimg, self.points, chosen)
             self.image_label.repaint()
-            self.parent.display_coordinates(self.parent.output_box.points[chosen][0],
-                                            self.parent.output_box.points[chosen][1])
+            self.parent.display_coordinates(self.parent.output_box.points[chosen][0]*float((CAMERA_RESOLUTION_WIDTH/GUI_IMAGE_SIZE_WIDTH)),
+                                            self.parent.output_box.points[chosen][1]*float((CAMERA_RESOLUTION_HEIGHT/GUI_IMAGE_SIZE_HEIGHT)))
             self.parent.process_point(index=chosen)
         else:
 
@@ -444,12 +485,31 @@ class QProcessedImageGroupBox(QGroupBox):
                     best_y = diff_y
                     #print("diff_x: " + str(selected_x - x) + " diff_y: " + str(selected_y - y))
                     chosen = i
+                    self.chosen = i
             #print("best_x: " + str(best_x) + " best_y: " + str(best_y))
             self.parent.draw_processed_img_with_pts(self.image_label.img, self.points, chosen)
-            self.parent.display_coordinates(self.parent.output_box.points[chosen][0],
-                                            self.parent.output_box.points[chosen][1])
+            self.parent.display_coordinates(self.parent.output_box.points[chosen][0]*float((CAMERA_RESOLUTION_WIDTH/GUI_IMAGE_SIZE_WIDTH)),
+                                            self.parent.output_box.points[chosen][1]*float((CAMERA_RESOLUTION_HEIGHT/GUI_IMAGE_SIZE_HEIGHT)))
             self.parent.process_point(index=chosen)
 
+    def change_use_masked_img(self):
+        if not self.parent.last_rawimg:
+            QMessageBox.information(None, 'Not available', 'Capture an image first.', QMessageBox.Ok)
+            self.use_masked_image.setChecked(True)
+            return
+
+        mode = self.parent.get_active_mode()
+
+        if mode == MANUAL and not self.points:
+            if self.use_masked_image.isChecked():
+                self.parent.draw_output_img(self.parent.masked_img)
+            else:
+                self.parent.draw_output_img(self.parent.last_rawimg)
+        else:
+            if self.use_masked_image.isChecked():
+                self.parent.draw_processed_img_with_pts(self.parent.masked_img, self.points, self.chosen)
+            else:
+                self.parent.draw_processed_img_with_pts(self.parent.last_rawimg, self.points, self.chosen)
 
 class QImageLabel(QLabel):
     def __init__(self, _, img):
@@ -629,7 +689,6 @@ class MainWindow(QMainWindow):
         btn_debug_cmds = QPushButton("Debug Cmds")
         btn_debug_cmds.clicked.connect(self.debug_cmds_event)
 
-
         self.btn_widget = QWidget()
         btn_panel = _createCntrBtn(btn_debug_cmds, btn_settings, btn_reset, btn_calibrate, btn_close)
         self.btn_widget.setLayout(btn_panel)
@@ -641,8 +700,11 @@ class MainWindow(QMainWindow):
         self._layout.addWidget(self.btn_widget2)
 
         self.setAttribute(Qt.WA_DeleteOnClose, True)
+        self.last_rawimg = None
+        self.masked_img = None
 
         self.show()
+        #QApplication.processEvents()
 
         self.gfx_thread = GraphicsThread(self)
         self.gfx_thread.start()
@@ -657,7 +719,7 @@ class MainWindow(QMainWindow):
         self.output_box.display_coords.repaint()
 
     def display_injection_site(self, x, y, x_steps, y_steps):
-        self.output_box.display_injection_site_label.setText("Injection Site(mm): x: {0:.2f} away. y: {0:.2f} down.".format(x, y) \
+        self.output_box.display_injection_site_label.setText("Injection Site(mm):    x: {0:.2f} away. y: {0:.2f} down.".format(x, y) \
                 + "\nInjection Site(steps): x: " + str(x_steps) + " away. y: " + str(y_steps) + " down.")
         self.output_box.display_injection_site_label.repaint()
 
@@ -666,7 +728,7 @@ class MainWindow(QMainWindow):
         self.output_box.display_coords.repaint()
 
     def clear_injection_site(self):
-        self.output_box.display_injection_site_label.setText("Injection Site(mm): \nInjection Site(steps): ")
+        self.output_box.display_injection_site_label.setText("Injection Site(mm):    \nInjection Site(steps): ")
         self.output_box.display_injection_site_label.repaint()
 
     #class ProcessingThread(QThread): TODO: do we need this?
@@ -771,16 +833,20 @@ class MainWindow(QMainWindow):
         self.clear_coordinates()
         self.clear_injection_site()
         self.output_box.points = None
+        self.output_box.chosen = None
         self.processor.centers = None
         self.processor.selection = None
+        self.output_box.use_masked_image.setChecked(True)
 
         if STILL_IMAGE_CAPTURE: # should only be on if picamera
             raw = self.camera.capture_still_image()
         else:
             raw = self.feed.rawframe
+
         # curious enough cvting to correct colors seems to throw off pts
         #if not USING_PI and not FORWARDING:
-        #raw = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB)
+        #if isinstance(self.camera, FakeCamera) or isinstance(self.camera, Camera):
+        raw = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB)
         #if SAVE_RAWIMG:
         cv2.imwrite('gui-rawimg.jpg', raw)
         height, width, channels = raw.shape
@@ -788,6 +854,7 @@ class MainWindow(QMainWindow):
         q_img = QImage(raw.copy().data, width, height, bytes_per_line, QImage.Format_RGB888)
         processed_img = QPixmap.fromImage(q_img)
         processed_img_scaled = processed_img.scaled(GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
+        self.last_rawimg = processed_img_scaled
         self.draw_output_img(processed_img_scaled)
         QCoreApplication.processEvents()
         self.processing_status.showMessage("Processing:   Applying thresholding...")
@@ -855,6 +922,7 @@ class MainWindow(QMainWindow):
             final_selection = self.processor.get_final_selection(numpy.shape(raw), centers)
             if final_selection:
                 self.display_coordinates(self.output_box.points[final_selection][0],self.output_box.points[final_selection][1]) # TODO what if no coordinate...
+                self.output_box.chosen = final_selection
                 self.draw_processed_img_with_pts(processed_img_scaled, points, final_selection)
                 self.processing_status.showMessage("Processing:   Final selection complete...")
                 self.process_point()
