@@ -134,7 +134,7 @@ def set_forwarding_settings():
     CROPPED_RESOLUTION_HEIGHT = 1000 # clip height because uneven distribution of light
 
     if not CROPPING_ENABLED:
-        factor = 4
+        factor = 2
         GUI_IMAGE_SIZE_WIDTH = CAMERA_RESOLUTION_WIDTH / factor
         GUI_IMAGE_SIZE_HEIGHT = CAMERA_RESOLUTION_HEIGHT / factor
     else:
@@ -144,7 +144,8 @@ def set_forwarding_settings():
 
     CLIP_RAILS_THROUGH_NUMPY = True
 
-FAKE_INPUT_IMG = 1
+FAKE_INPUT_IMG = 0
+
 if FAKE_INPUT_IMG:
     FAKE_INPUT_IMG_NAME = "./test_images/jackson.jpg"
     CAMERA_RESOLUTION_WIDTH = 1000#3280
@@ -379,8 +380,8 @@ class QProcessedImageGroupBox(QGroupBox):
 
         self.display_coords = QLabel("Coordinates(pixels): ")
         self.display_injection_site_label = QLabel("Injection Site(mm):   \nInjection Site(steps): ")
-        self.display_coords.setStyleSheet("font-weight: bold; color: red");
-        self.display_injection_site_label.setStyleSheet("font-weight: bold; color: red");
+        self.display_coords.setStyleSheet("color: red");
+        self.display_injection_site_label.setStyleSheet("color: red");
 
         #self.coord_layout.addWidget(self.image_label)
         self._layout.addWidget(self.image_label)
@@ -410,7 +411,7 @@ class QProcessedImageGroupBox(QGroupBox):
 
         self.coord_holder.setFixedHeight(70)
         self.coord_holder.setFixedWidth(360)
-        self.settings_holder.setFixedHeight(70)
+        self.settings_holder.setFixedHeight(64)
 
     def get_layout(self):
         return self._layout
@@ -475,6 +476,7 @@ class QProcessedImageGroupBox(QGroupBox):
                     best_y = diff_y
                     #print("diff_x: " + str(selected_x - x) + " diff_y: " + str(selected_y - y))
                     chosen = i
+                    self.chosen = i
             #print("best_x: " + str(best_x) + " best_y: " + str(best_y))
             self.parent.draw_processed_img_with_pts(self.image_label.img, self.points, chosen)
             self.parent.display_coordinates(self.parent.output_box.points[chosen][0]*float((CAMERA_RESOLUTION_WIDTH/GUI_IMAGE_SIZE_WIDTH)),
