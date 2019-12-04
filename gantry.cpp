@@ -288,8 +288,11 @@ void move_back_from_IL(int z_depth){	//this will probably only be used for my te
 	Serial.println(y_dist_travelled);
 	delay(3000);
 
+	status_msg("Moving Z back from IL...");
 	move_stepper(Z_AXIS, z_depth, BACKWARD);			//this is not correct to make z go back home need to account for realignment
+	status_msg("Moving X back from IL...");
 	move_stepper(X_AXIS, x_dist_travelled, BACKWARD);
+	status_msg("Moving Y back from IL...");
 	move_stepper(Y_AXIS, y_dist_travelled, BACKWARD);
 
 }

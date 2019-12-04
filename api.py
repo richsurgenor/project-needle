@@ -207,7 +207,6 @@ class GantryMock(threading.Thread):
 
     def move_cap_to_il(self):
         #self.send_cmd(CMD_STATUS_MSG, "Moving to insertion location...")
-        self.send_cmd(CMD_STATUS_MSG, "Moving X to IL...")
         for i in range(0, self.des_point['x']):
             self.send_cmd(CMD_POSITION_UPDATE, "00")
             time.sleep(0.001)
@@ -222,15 +221,16 @@ class GantryMock(threading.Thread):
             time.sleep(0.001)
 
     def move_back_from_il(self):
-        self.send_cmd(CMD_STATUS_MSG, "Moving back from IL...")
+        self.send_cmd(CMD_STATUS_MSG, "Moving Z back from IL...")
         # lets say 1500 steps
         for i in range(0, 1500-NEEDLE_Z_PROJ_STEPS+NEEDLE_Z_INSERTION_DEPTH):
             self.send_cmd(CMD_POSITION_UPDATE, "21")
             time.sleep(0.001)
-
+        self.send_cmd(CMD_STATUS_MSG, "Moving X back from IL...")
         for i in range(0, self.des_point['x'] + NEEDLE_X_PROJ_STEPS):
             self.send_cmd(CMD_POSITION_UPDATE, "01")
             time.sleep(0.001)
+        self.send_cmd(CMD_STATUS_MSG, "Moving Y back from IL...")
         for i in range(0, self.des_point['y'] + STEPS_TO_Y_HOME - NEEDLE_Y_PROJ_STEPS):
             self.send_cmd(CMD_POSITION_UPDATE, "11")
             time.sleep(0.001)

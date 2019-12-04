@@ -298,18 +298,20 @@ class StatusThread(QThread):
         while True:
             if self.gc:
                 self.gantry_status.showMessage("Gantry:   " + self.gc.msg)
-                if self.parent.finished_init and self.last_msg != self.gc.msg:
-                    if not self.obj_rotation_thread:
-                        if self.parent.gfx_cb_autorotate.isChecked():
+
+                if GFX_AUTO_ROTATE:
+                    if self.parent.finished_init and self.last_msg != self.gc.msg:
+                        if not self.obj_rotation_thread:
                             self.obj_rotation_thread = ObjectRotationThread(self.parent, self.parent.gfx_widget)
                             # self.obj_rotation_thread.th
                             self.obj_rotation_thread.start()
                             self.parent.obj_rotation_thread = self.obj_rotation_thread
-                    while not self.obj_rotation_thread.obj_rotater:
-                        pass
-                    print('CURRENT THREAD 1: ' + self.currentThread().objectName())
-                    self.obj_rotation_thread.obj_rotater.msg_changed.emit()
-                    self.last_msg = self.gc.msg
+                        while not self.obj_rotation_thread.obj_rotater:
+                            pass
+                        #print('CURRENT THREAD 1: ' + self.currentThread().objectName())
+                        self.obj_rotation_thread.obj_rotater.msg_changed.emit()
+                        self.last_msg = self.gc.msg
+
                 self.msleep(100)
 
 
@@ -654,9 +656,9 @@ class MainWindow(QMainWindow):
 
         self.video_frame = QInputBox("", None)
         self.input_box = QGroupBox("Input Image") #QImageGroupBox("Input Image", self.video_frame)
-        self.gfx_cb_autorotate = QCheckBox("GFX Auto-Rotate")
-        self.gfx_cb_autorotate.setChecked(GFX_AUTO_ROTATE)
-        self.gfx_cb_autorotate.clicked.connect(self.gfx_cb_autorotate_event)
+        self.gfx_cb_autorotate = QLabel("")#QCheckBox("GFX Auto-Rotate")
+        #self.gfx_cb_autorotate.setChecked(GFX_AUTO_ROTATE)
+        #self.gfx_cb_autorotate.clicked.connect(self.gfx_cb_autorotate_event)
 
         input_box_layout = QVBoxLayout()
         self.input_box.setLayout(input_box_layout)
@@ -1248,94 +1250,23 @@ class ObjectRotater(QObject):
         self.parent = parent
         #self.setObjectName("Rotation Thread")
         self.gfx_widget = gfx_widget
-        self.axis = None
-        self.dir = None
-        #self.rotated = 0 # in degrees
-        #self.to_rotate = 0
-        self.moving_axis = -1
-
-        self.current_axis = 0 # start facing the favorable for viewing x
-
-        self.last_axis = None
-        self.to_rotate_last_axis = 0
-
-        self.trigger = False
         self.msg_changed.connect(self.status_changed_event, Qt.AutoConnection)
-        #self.dummy = DummyClass(self)
         print("done init...")
-        #self.dispatcher = self.eventDispatcher()
-
-    # def status_changed_event(self):
-    #     # self.disconnect()
-    #     print('ROTATION EMIT! CURRENT THREAD: ' + self.parent.currentThread().objectName())
-    #     self.gfx_widget.rotate_object(1, 90)
-    #     QThread.msleep(15000)
-    #     print("sleep over.")
-
-    # X_AXIS = 0
-    # Y_AXIS = 1
-    # Z_AXIS = 2
-
-    #def run(self):
-        # self.timer = QTimer()
-        # self.timer.setSingleShot(True)
-        #self.loop = QEventLoop()
-        #self.msg_changed.connect(self.status_changed_event, Qt.QueuedConnection)
-        #self.loop.exec()
-
-        #self.exec()
-
-        #while True:
-        #    self.msleep(100)
-            #print("wow")
-
-    #     while True:
-    #         if self.trigger:
-    #             if self.moving_axis == 0:
-    #                 self.current_axis = 0
-    #                 self.to_rotate = 90
-    #                 self.to_rotate_last_axis = 90
-    #                 pass
-    #             elif self.moving_axis == 1:
-    #                 self.current_axis = 1
-    #                 self.to_rotate = 90
-    #                 self.to_rotate_last_axis = 90
-    #             elif self.moving_axis == 2:
-    #                 self.current_axis = 1
-    #                 self.to_rotate = 360
-    #                 self.to_rotate_last_axis = 0
-    #             else:
-    #                 print("Error rotating axis...")
-    #                 return
-    #
-    #             self.parent.gfx_widget.rotate_object(self.last_axis, True)
-    #             #if self.last_axis == 0:
-    #             #    self.parent.gfx_widget.rotate_object(0, True)
-    #             #elif self.last_axis == 2:
-    #             #    self.parent.gfx_widget.rotate_object(2, True)
-    #
-    #         self.msleep(20)
-    #         if self.rotated < self.to_rotate:
-    #             self.parent.gfx_widget.rotate_object(self.current_axis)
-    #             self.rotated = self.rotated + 0.2
-    #
-    #         else:
-    #             print("total rotated {} ".format(self.rotated))
 
     def status_changed_event(self):
-        print('ROTATION EMIT! CURRENT THREAD: ' + self.parent.currentThread().objectName())
+        #print('ROTATION EMIT! CURRENT THREAD: ' + self.parent.currentThread().objectName())
         msg = self.parent.main.gantry_status.currentMessage()
         if msg == "Gantry:   Moving X to IL...":
             print("passing opportunity to move...")
             pass
         elif msg == "Gantry:   Moving Y to IL...":
             print("rotating because we are moving y..")
-            # to_rotate = 90
-            # rotated = 0
-            # while rotated < to_rotate:
-            #     self.parent.gfx_widget.rotate_object(1, 10)
-            #     rotated = rotated + 10
-            #     self.msleep(100)
+            to_rotate = 90
+            rotated = 0
+            while rotated < to_rotate:
+                self.parent.gfx_widget.rotate_object(1, 5)
+                rotated = rotated + 5
+                QThread.msleep(25)
             # to_rotate = 90
             # rotated = 0
             # while rotated < to_rotate:
@@ -1348,18 +1279,33 @@ class ObjectRotater(QObject):
             #     self.parent.gfx_widget.rotate_object(0, 10, True)
             #     rotated = rotated + 10
             #     self.msleep(100)
-            self.parent.gfx_widget.rotate_object(1, 90)
+            #self.parent.gfx_widget.rotate_object(1, 90)
             #self.msleep(9000)
 
         elif msg == "Gantry:   Moving Z to IL...":
-            self.parent.gfx_widget.rotate_object(1, 90, True)
-            # to_rotate = 90
-            # rotated = 0
-            # while rotated < to_rotate:
-            #     self.parent.gfx_widget.rotate_object(1, 10, True)
-            #     rotated = rotated + 10
-            #     self.msleep(100)
+            #self.parent.gfx_widget.rotate_object(1, 90, True)
+            to_rotate = 270
+            rotated = 0
+            while rotated < to_rotate:
+                self.parent.gfx_widget.rotate_object(1, 5)
+                rotated = rotated + 5
+                QThread.msleep(25)
             pass
+        elif msg == "Gantry:   Moving Y back from IL...":
+            to_rotate = 90
+            rotated = 0
+            while rotated < to_rotate:
+                self.parent.gfx_widget.rotate_object(1, 5)
+                rotated = rotated + 5
+                QThread.msleep(25)
+
+            QThread.msleep(2000)
+            to_rotate = 270
+            rotated = 0
+            while rotated < to_rotate:
+                self.parent.gfx_widget.rotate_object(1, 5)
+                rotated = rotated + 5
+                QThread.msleep(25)
         else:
             print("status changed signal received")
 
