@@ -120,7 +120,7 @@ def set_forwarding_settings():
 
     GANTRY_ON = 1
     MOCK_MODE_IMAGE_PROCESSING = 0
-    MOCK_MODE_GANTRY = 1
+    MOCK_MODE_GANTRY = 0
 
     SAVE_RAWIMG = 1
 
