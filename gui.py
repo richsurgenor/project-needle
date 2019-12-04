@@ -395,7 +395,7 @@ class QProcessedImageGroupBox(QGroupBox):
         self.use_masked_image.setChecked(True)
         self.use_masked_image.clicked.connect(self.change_use_masked_img)
         self.settings_layout.addWidget(self.use_masked_image)
-        self.settings_layout.setAlignment(Qt.AlignTop)
+        #self.settings_layout.setAlignment(Qt.AlignTop)
 
         self.split_layout.addWidget(self.coord_holder)
         self.split_layout.addWidget(self.settings_holder)
@@ -484,6 +484,11 @@ class QProcessedImageGroupBox(QGroupBox):
             self.parent.process_point(index=chosen)
 
     def change_use_masked_img(self):
+        if not self.parent.last_rawimg:
+            QMessageBox.information(None, 'Not available', 'Capture an image first.', QMessageBox.Ok)
+            self.use_masked_image.setChecked(True)
+            return
+
         mode = self.parent.get_active_mode()
 
         if mode == MANUAL and not self.points:
@@ -684,6 +689,9 @@ class MainWindow(QMainWindow):
         btn_panel2 = _createCntrBtn(btn_process_img, btn_gantry_start)
         self.btn_widget2.setLayout(btn_panel2)
         self._layout.addWidget(self.btn_widget2)
+
+        self.last_rawimg = None
+        self.masked_img = None
 
         self.show()
         #QApplication.processEvents()
