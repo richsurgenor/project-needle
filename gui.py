@@ -642,7 +642,10 @@ class MainWindow(QMainWindow):
 
         self.setAttribute(Qt.WA_DeleteOnClose, True)
 
+        self.masked_img = None
+
         self.show()
+        QApplication.processEvents()
 
         self.gfx_thread = GraphicsThread(self)
         self.gfx_thread.start()
@@ -903,17 +906,6 @@ class MainWindow(QMainWindow):
             self.gfx_thread.move_needle(2, 0)
         pass
 
-    # verticies = (
-    #     (4, -8, -12),
-    #     (4, 8, -12),
-    #     (-4, 8, -12),
-    #     (-4, -8, -12),
-    #     (4, -8, 12),
-    #     (4, 8, 12),
-    #     (-4, -8, 12),
-    #     (-4, 8, 12)
-    # )
-
 # in mm
 STARTING_CAMERA_HEIGHT=100
 STARTING_CAMERA_DISTANCE=400 #900
@@ -1143,7 +1135,7 @@ def Cube():
     GL.glBegin(GL.GL_LINES)
     for edge in edges:
         for vertex in edge:
-            GL.glVertex3fv(verticies[vertex])
+            GL.glVertex3fv(verticies[vertex]+20)
     GL.glEnd()
 
 
@@ -1210,6 +1202,12 @@ class GraphicsThread(QThread):
             self.needle_counter = 0
 
 
+"""
+TODO: add option to auto rotate object,
+texturize bottom part of cube to add image of arm,
+add option to switch image on processed image,
+add ticks to side of cube
+"""
 class GfxWindow(QDialog):
 
     def __init__(self, parent, main):
@@ -1219,7 +1217,7 @@ class GfxWindow(QDialog):
         self.main = main
         self.resize(600, 600)
 
-        self.gfx_widget = OpenGLWidget(self, self.parent)
+        self.gfx_widget = OpenGLWidget(self, self.parent, self.main)
 
         format = QSurfaceFormat()
         format.setDepthBufferSize(24);
@@ -1307,12 +1305,13 @@ GFX_WINDOW_HEIGHT=600
 
 class OpenGLWidget(QOpenGLWidget):
 
-    def __init__(self, window, parent):
+    def __init__(self, window, parent, main):
         super(QOpenGLWidget, self).__init__(window)
         self.window = window
         self.parent = parent
+        self.main = main
         self.i = 0
-        self.z = 800.0
+        self.z = STARTING_CAMERA_DISTANCE
         self.zoom = 120
         self.change = False
         self.rotation = False
@@ -1384,6 +1383,8 @@ class OpenGLWidget(QOpenGLWidget):
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.colorBuffer)
         GL.glBufferData(GL.GL_ARRAY_BUFFER, color_buffer_data.nbytes, color_buffer_data, GL.GL_STATIC_DRAW)
 
+        self.texture_data = cv2.imread("owl.jpg")
+
         # vs = shaders.compileShader(VERTEX_SHADER, GL.GL_VERTEX_SHADER)
         # fs = shaders.compileShader(FRAGMENT_SHADER, GL.GL_FRAGMENT_SHADER)
 
@@ -1396,15 +1397,14 @@ class OpenGLWidget(QOpenGLWidget):
         GL.glLoadIdentity()
         GLU.gluPerspective(120, (GFX_WINDOW_WIDTH / GFX_WINDOW_HEIGHT), 1, 4000.0)
 
-        GL.glMatrixMode(GL.GL_MODELVIEW)
-        GLU.gluLookAt(0, STARTING_CAMERA_HEIGHT, STARTING_CAMERA_DISTANCE, 0, 0, 0, 0, 1, 0)
         #GL.glTranslatef(0.0, 0.0, -20)
 
         #GL.glRotatef(20, 3, 1, 1)
 
         # need glortho?
         GL.glMatrixMode(GL.GL_MODELVIEW)
-        #GL.glLoadIdentity()
+        GL.glLoadIdentity()
+        GLU.gluLookAt(0, STARTING_CAMERA_HEIGHT, self.z, 0, 0, 0, 0, 1, 0)
 
         self.ux = None
         self.uy = None
@@ -1417,51 +1417,55 @@ class OpenGLWidget(QOpenGLWidget):
         #GL.glDepthFunc(GL.GL_LESS);
 
         GL.glEnable(GL.GL_BLEND)
-        GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA);
+        GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
 
         pass
 
-    def moveCube(self):
-        for x in range(0, 300):
-            self.i = self.i - 1
-            self.update()
-            self.parent.msleep(10)
-            qApp.processEvents()
-
     def paintGL(self):
+
             # glRotatef(1, 3, 1, 1)
             #GLU.gluPerspective(90, (800 / 600), 0.1, 50.0)
 
             GL.glMatrixMode(GL.GL_PROJECTION)
             GL.glLoadIdentity()
-
             GLU.gluPerspective(self.zoom, (GFX_WINDOW_WIDTH / GFX_WINDOW_HEIGHT), 1, 4000.0)
             GL.glMatrixMode(GL.GL_MODELVIEW)
+
+            """
+            if self.change:
+                #temp = GL.glGetFloatv(GL.GL_MODELVIEW_MATRIX)
+                GL.glLoadIdentity()
+                GLU.gluLookAt(0, STARTING_CAMERA_HEIGHT, self.z, 0, 0, 0, 0, 1, 0)
+                self.change = False
+                return
+            """
 
             if self.rotation:
                 #GL.glMatrixMode(GL.GL_MODEL_VIEW)
                 GL.glLoadMatrixf(self.CT)
                 GL.glRotatef(self.angle, self.ux, self.uy, 0)
+                print("angle: {} ux: {} uy: {}".format(self.angle, self.ux, self.uy))
                 self.CT = GL.glGetFloatv(GL.GL_MODELVIEW_MATRIX)
                 self.rotation=False
                 pass
 
             #if self.change:
             GL.glLoadMatrixf(self.CT)
-            #GLU.gluLookAt(0, 0, self.z, 0, 0, 0, 0, 1, 0)
-            self.change = False
+            #self.change = False
             #GL.glMatrixMode(GL.GL_PROJECTION)
             #GL.glTranslatef(0.0, 0.0, -20)
             #GL.glRotatef(20, 3, 1, 1)
             GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
             GL.glColor3d(0, 0, 0)
 
+            """
             GL.glPushMatrix()
             GL.glTranslatef(self.needle_position[0], self.needle_position[1], self.needle_position[2])
             GL.glScalef(20, 20, 20)
             GL.glRotatef(180, 0, 0, 0)
             GL.glCallList(self.obj.gl_list)
             GL.glPopMatrix()
+            """
 
             GL.glUseProgram(self.program)
 
@@ -1478,6 +1482,45 @@ class OpenGLWidget(QOpenGLWidget):
 
             GL.glUseProgram(0)
 
+            GL.glEnable(GL.GL_TEXTURE_2D)
+            GL.glTexEnvf(GL.GL_TEXTURE_ENV, GL.GL_TEXTURE_ENV_MODE, GL.GL_DECAL);
+
+            #start here
+            self.texture = GL.glGenTextures(1)
+            GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
+            GL.glBindTexture(GL.GL_TEXTURE_2D, self.texture)
+            GL.glTexParameterf(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE)
+            GL.glTexParameterf(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)
+            GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST)
+            GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST)
+            GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB, get_effective_image_width(), get_effective_image_height(),
+                            0, GL.GL_RGB, GL.GL_UNSIGNED_BYTE, self.texture_data)
+            GL.glGenerateMipmap(GL.GL_TEXTURE_2D)
+            GL.glActiveTexture(GL.GL_TEXTURE0)
+            #a = self.main.masked_img
+
+            GL.glPushMatrix()
+
+            GL.glTranslatef(0, GANTRY_HEIGHT/2, 0)
+            GL.glRotatef(90, 0, 0, 0)
+
+            GL.glBegin(GL.GL_QUADS)
+            GL.glTexCoord(0, 0)
+            GL.glVertex2f(0, 0)
+
+            GL.glTexCoord(0, 1)
+            GL.glVertex2f(0, 1000) # height
+
+            GL.glTexCoord(1, 1)
+            GL.glVertex2f(1000, 1000) # width, height
+
+            GL.glTexCoord(1, 0)
+            GL.glVertex2f(1000, 0) # width
+
+            GL.glEnd()
+            GL.glPopMatrix()
+            GL.glDisable(GL.GL_TEXTURE_2D)
+
             Cube()
 
             # GL.glPushMatrix()
@@ -1486,6 +1529,13 @@ class OpenGLWidget(QOpenGLWidget):
             # GL.glPopMatrix()
 
         #GL.glDrawArrays(GL.GL_TRIANGLES, 0, 3)
+
+    def moveCube(self):
+        for x in range(0, 300):
+            self.i = self.i - 1
+            self.update()
+            self.parent.msleep(10)
+            qApp.processEvents()
 
     def changePerspective(self):
         self.z = self.z - 1.5
