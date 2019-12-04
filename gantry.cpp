@@ -17,6 +17,7 @@
 Servo myservo;  // create servo object to control a servo
 
 static int x_coord, y_coord, z_coord = 0;
+static int x_coord_og, y_coord_og = 0;
 static int z_found = 0;
 static bool enable = 0;
 
@@ -132,12 +133,15 @@ int move_cap_to_IL(){
 	int result[2];
 
 	dir = FORWARD;
+	status_msg("Moving X to IL...");
 	move_stepper(X_AXIS, x_coord, dir);
+	status_msg("Moving Y to IL...");
 	move_stepper(Y_AXIS, y_coord, dir);
+	status_msg("Moving Z to IL...");
 	z_depth = move_stepper(Z_AXIS, z_coord, dir);
 	
-	Serial.println("z_depth 2: ");
-	Serial.println(z_depth);
+	//Serial.println("z_depth 2: ");
+	//Serial.println(z_depth);
 	char output[50];
     sprintf(output, "x: %d y: %d", result[0], result[1]);
     status_msg(output);
@@ -447,8 +451,8 @@ int move_stepper(int axis, int nSteps, int dir){
          */
 		
 		z_depth = depth_finder();
-		Serial.println("z_depth 1: "); // todo: need to be here?
-		Serial.println(z_depth);
+		//Serial.println("z_depth 1: "); // todo: need to be here?
+		//Serial.println(z_depth);
 		return(z_depth);
 	}
 
@@ -568,17 +572,27 @@ int process_req(const char* msg) {
             // TODO: splice string from msg
             break;
         case REQ_GO_TO_WORK:
-            status_msg("Going to work...");
+			if(x_coord == 0 && y_coord == 0) {
+				status_msg("I do not yet have a coordinate...");
+				return 0;
+			}
 			move_y_home();
 			z_depth = move_cap_to_IL();
 			//Serial.println("z_depth 3: ");
 			//Serial.println(z_depth);
+			status_msg("Positioning Needle...");
 			position_needle();
+			status_msg("Injecting Needle...");
 			inject_needle();
+			status_msg("Pulling Needle...");
 			pull_needle();
+			status_msg("Moving back from IL...");
 			move_back_from_IL(z_depth);
-			x_coord = 0;
-			y_coord = 0;
+			status_msg("Sequence complete!...");
+
+			// If these are 0 then gantry will send z axis down first...
+			x_coord = x_coord_og;
+			y_coord = y_coord_og;
 			z_coord = 0;
 			z_found = 0;
             break;
@@ -618,7 +632,9 @@ void decode_coordinate(const char* msg) {
 	
 	x_coord = result[0];
 	y_coord = result[1];
-	
+
+	x_coord_og = result[0];
+	y_coord_og = result[1];
 	
 	char output[50];
     sprintf(output, "x: %d y: %d", result[0], result[1]);
