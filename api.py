@@ -433,7 +433,7 @@ class GantryController(AbstractGantryController):
 
         self.stopped = False
         self.coordinate = None
-        self.gfx_thread = None
+        self.gfx_widget = None
 
     def run(self):
         print("started gantry controller thread...")
@@ -466,7 +466,7 @@ class GantryController(AbstractGantryController):
                     #print("Received position update!")
                     axis = int(chr(line[1]))
                     dir = int(chr(line[2]))
-                    self.gfx_thread.move_needle(axis, dir)
+                    self.gfx_widget.move_needle(axis, dir)
                     pass
                     #print("Received position update...")
                 elif cmd == CMD_COORDINATE_RECEIVED:

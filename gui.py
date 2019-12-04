@@ -10,9 +10,11 @@ Justin Sutherland, Laura Grace Ayers.
 
 # GUI for Project Needle, mainly allowing the user to view ideal points for needle insertion to veins.
 
-from PyQt5.QtCore import Qt, QCoreApplication, QSize, QThread, QFile, QTextStream, QPoint, pyqtSignal
+from PyQt5.QtCore import Qt, QObject, QCoreApplication, QSize, QThread, QFile, QTextStream, QPoint, pyqtSignal, \
+                    QTimer, QEventLoop
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QPixmap, QPainter, QImage, QColor, QKeySequence, QSurfaceFormat, QOpenGLVertexArrayObject
+
 import numpy
 import cv2
 import sys
@@ -155,7 +157,7 @@ def set_forwarding_settings():
 
     CLIP_RAILS_THROUGH_NUMPY = True
 
-FAKE_INPUT_IMG = 0
+FAKE_INPUT_IMG = 1
 
 if FAKE_INPUT_IMG:
     FAKE_INPUT_IMG_NAME = "./test_images/jackson.jpg"
@@ -288,31 +290,27 @@ class StatusThread(QThread):
             self.gc = api.GantryController(MOCK_MODE_GANTRY)
             self.gc.start()
         self.msleep(100)
+        self.last_msg = ""
+        self.obj_rotation_thread = None
         #self.gc.send_msg(api.REQ_ECHO_MSG, "Connected to Arduino!")
 
     def run(self):
         while True:
             if self.gc:
                 self.gantry_status.showMessage("Gantry:   " + self.gc.msg)
-                self.msleep(1000)
-
-        """
-        self.status.showMessage("STATUS: Connecting to Gantry..")
-
-        self.status.showMessage("STATUS: Gantry going home..")
-        self.gc.mutex.acquire()
-        self.gc.mode = 1
-        self.gc.mutex.release()
-
-        while not self.gc.gantry.is_home():
-            pass
-
-        self.status.showMessage("STATUS: Gantry is Home..")
-        self.msleep(1000)
-        self.status.showMessage("STATUS: Waiting for user input..")
-        # self.gc.send_gantry_home()
-        """
-
+                if self.parent.finished_init and self.last_msg != self.gc.msg:
+                    if not self.obj_rotation_thread:
+                        if self.parent.gfx_cb_autorotate.isChecked():
+                            self.obj_rotation_thread = ObjectRotationThread(self.parent, self.parent.gfx_widget)
+                            # self.obj_rotation_thread.th
+                            self.obj_rotation_thread.start()
+                            self.parent.obj_rotation_thread = self.obj_rotation_thread
+                    while not self.obj_rotation_thread.obj_rotater:
+                        pass
+                    print('CURRENT THREAD 1: ' + self.currentThread().objectName())
+                    self.obj_rotation_thread.obj_rotater.msg_changed.emit()
+                    self.last_msg = self.gc.msg
+                self.msleep(100)
 
 
 class PreviewThread(QThread):
@@ -353,7 +351,7 @@ class PreviewThread(QThread):
     def run(self):
         while True:
             self.next_frame_slot()
-            time_slept = int((float(1)/FPS) * 1000)
+            time_slept = 1000
             self.msleep(time_slept) # TODO: make this settable
             qApp.processEvents()
 
@@ -656,9 +654,9 @@ class MainWindow(QMainWindow):
 
         self.video_frame = QInputBox("", None)
         self.input_box = QGroupBox("Input Image") #QImageGroupBox("Input Image", self.video_frame)
-        self.gfx_cb_autorotate = QLabel("")
-        #self.gfx_cb_autorotate.setChecked(GFX_AUTO_ROTATE)
-        #self.gfx_cb_autorotate.clicked.connect(self.gfx_cb_autorotate_event)
+        self.gfx_cb_autorotate = QCheckBox("GFX Auto-Rotate")
+        self.gfx_cb_autorotate.setChecked(GFX_AUTO_ROTATE)
+        self.gfx_cb_autorotate.clicked.connect(self.gfx_cb_autorotate_event)
 
         input_box_layout = QVBoxLayout()
         self.input_box.setLayout(input_box_layout)
@@ -668,8 +666,12 @@ class MainWindow(QMainWindow):
         self.pics_hbox.addWidget(self.input_box) #(self.lb)
         self.feed = PreviewThread(self.camera, self.video_frame)
         self.feed.start()
+
+        self.finished_init = False
+
         # Init thread that manages Gantry...
         self.status_thread = StatusThread(self, self.gantry_status, self.processing_status)
+        self.status_thread.setObjectName("Status Thread")
         self.status_thread.start()
         self.gc = self.status_thread.gc
 
@@ -713,17 +715,22 @@ class MainWindow(QMainWindow):
 
         # Init graphics
         if GFX_ON_START:
-            self.start_gfx_thread()
+            self.start_gfx_widget()
         else:
-            self.gfx_thread = None
+            self.gfx_widget = None
+
+        #self.status_thread.moveToThread(self.obj_rotation_thread.thread())
+        #self.obj_rotation_thread.moveToThread(self.status_thread.thread())
+        self.finished_init = True
 
         QApplication.processEvents()
         self.show()
 
-    def start_gfx_thread(self):
-        self.gfx_thread = GraphicsThread(self)
-        self.gfx_thread.start()
-        self.gc.gfx_thread = self.gfx_thread
+    def start_gfx_widget(self):
+        self.gfx_widget = GraphicsWidget(self)
+        self.gfx_widget.setObjectName("Graphics Thread")
+        #self.gfx_widget.start()
+        self.gc.gfx_widget = self.gfx_widget
 
     def gfx_cb_autorotate_event(self):
         pass
@@ -969,6 +976,7 @@ class MainWindow(QMainWindow):
         self.status_thread.gc = None
         time.sleep(1) # not okay probably
         self.status_thread.gc = api.GantryController(MOCK_MODE_GANTRY)
+        self.status_thread.setObjectName("Gantry Controller")
         self.status_thread.gc.start()
         #self.output_box.image_label.set_status(False)
         # TODO: actually make this reset the entire state of the GUI
@@ -993,28 +1001,17 @@ class MainWindow(QMainWindow):
 
     def debug_cmds_event(self):
         for i in range(0, 8000):
-            self.gfx_thread.move_needle(2, 0)
+            self.gfx_widget.move_needle(2, 0)
         pass
 
     def gfx_view_event(self):
-        if self.gfx_thread:
-            if self.gfx_thread.window.isHidden():
-                self.gfx_thread.window.show()
+        if self.gfx_widget:
+            if self.gfx_widget.window.isHidden():
+                self.gfx_widget.window.show()
             else:
-                self.gfx_thread.window.hide()
+                self.gfx_widget.window.hide()
         else:
-            self.start_gfx_thread()
-
-    # verticies = (
-    #     (4, -8, -12),
-    #     (4, 8, -12),
-    #     (-4, 8, -12),
-    #     (-4, -8, -12),
-    #     (4, -8, 12),
-    #     (4, 8, 12),
-    #     (-4, -8, 12),
-    #     (-4, 8, 12)
-    # )
+            self.start_gfx_widget()
 
 # in mm
 STARTING_CAMERA_HEIGHT=0
@@ -1078,7 +1075,7 @@ vertex_buffer_data = [
     GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
     GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
     GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
-    
+
     GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH, # light blue face
     GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
     -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
@@ -1130,58 +1127,20 @@ color_buffer_data = [
     1.0, 1.0, 0,
     1.0, 1.0, 0,
     1.0, 1.0, 0,
-    
+
     0, 0.7, 1.0,
     0, 0.7, 1.0,
     0, 0.7, 1.0,
     0, 0.7, 1.0,
     0, 0.7, 1.0,
     0, 0.7, 1.0,
-    
+
     1.0, 0, 1.0,
     1.0, 0, 1.0,
     1.0, 0, 1.0,
     1.0, 0, 1.0,
     1.0, 0, 1.0,
     1.0, 0, 1.0]
-
-# color_buffer_data = [
-#     0.583,  0.771,  0.014,
-#     0.609,  0.115,  0.436,
-#     0.327,  0.483,  0.844,
-#     0.822,  0.569,  0.201,
-#     0.435,  0.602,  0.223,
-#     0.310,  0.747,  0.185,
-#     0.597,  0.770,  0.761,
-#     0.559,  0.436,  0.730,
-#     0.359,  0.583,  0.152,
-#     0.483,  0.596,  0.789,
-#     0.559,  0.861,  0.639,
-#     0.195,  0.548,  0.859,
-#     0.014,  0.184,  0.576,
-#     0.771,  0.328,  0.970,
-#     0.406,  0.615,  0.116,
-#     0.676,  0.977,  0.133,
-#     0.971,  0.572,  0.833,
-#     0.140,  0.616,  0.489,
-#     0.997,  0.513,  0.064,
-#     0.945,  0.719,  0.592,
-#     0.543,  0.021,  0.978,
-#     0.279,  0.317,  0.505,
-#     0.167,  0.620,  0.077,
-#     0.347,  0.857,  0.137,
-#     0.055,  0.953,  0.042,
-#     0.714,  0.505,  0.345,
-#     0.783,  0.290,  0.734,
-#     0.722,  0.645,  0.174,
-#     0.302,  0.455,  0.848,
-#     0.225,  0.587,  0.040,
-#     0.517,  0.713,  0.338,
-#     0.053,  0.959,  0.120,
-#     0.393,  0.621,  0.362,
-#     0.673,  0.211,  0.457,
-#     0.820,  0.883,  0.371,
-#     0.982,  0.099,  0.879]
 
 color_buffer_data = numpy.array(color_buffer_data, dtype=numpy.float32)
 
@@ -1263,12 +1222,165 @@ Z_MM_PER_STEP = 0.04
 FORWARD = 0
 BACKWARD = 1
 
-class GraphicsThread(QThread):
+class ObjectRotationThread(QThread):
+    def __init__(self, main, gfx_widget):
+        super().__init__()
+        self.setObjectName("Object Rotater Thread")
+        #self.parent = parent
+        self.main = main
+        self.gfx_widget = gfx_widget
+        self.obj_rotater = None
+
+    def run(self):
+        print("started object rotation thread....")
+
+        # The thread that owns this object will inherit the work of
+        # emitted signals!!
+        self.obj_rotater = ObjectRotater(self, self.gfx_widget)
+        self.exec()
+        pass
+
+class ObjectRotater(QObject):
+    msg_changed = pyqtSignal()
+
+    def __init__(self, parent, gfx_widget):
+        super().__init__()
+        self.parent = parent
+        #self.setObjectName("Rotation Thread")
+        self.gfx_widget = gfx_widget
+        self.axis = None
+        self.dir = None
+        #self.rotated = 0 # in degrees
+        #self.to_rotate = 0
+        self.moving_axis = -1
+
+        self.current_axis = 0 # start facing the favorable for viewing x
+
+        self.last_axis = None
+        self.to_rotate_last_axis = 0
+
+        self.trigger = False
+        self.msg_changed.connect(self.status_changed_event, Qt.AutoConnection)
+        #self.dummy = DummyClass(self)
+        print("done init...")
+        #self.dispatcher = self.eventDispatcher()
+
+    # def status_changed_event(self):
+    #     # self.disconnect()
+    #     print('ROTATION EMIT! CURRENT THREAD: ' + self.parent.currentThread().objectName())
+    #     self.gfx_widget.rotate_object(1, 90)
+    #     QThread.msleep(15000)
+    #     print("sleep over.")
+
+    # X_AXIS = 0
+    # Y_AXIS = 1
+    # Z_AXIS = 2
+
+    #def run(self):
+        # self.timer = QTimer()
+        # self.timer.setSingleShot(True)
+        #self.loop = QEventLoop()
+        #self.msg_changed.connect(self.status_changed_event, Qt.QueuedConnection)
+        #self.loop.exec()
+
+        #self.exec()
+
+        #while True:
+        #    self.msleep(100)
+            #print("wow")
+
+    #     while True:
+    #         if self.trigger:
+    #             if self.moving_axis == 0:
+    #                 self.current_axis = 0
+    #                 self.to_rotate = 90
+    #                 self.to_rotate_last_axis = 90
+    #                 pass
+    #             elif self.moving_axis == 1:
+    #                 self.current_axis = 1
+    #                 self.to_rotate = 90
+    #                 self.to_rotate_last_axis = 90
+    #             elif self.moving_axis == 2:
+    #                 self.current_axis = 1
+    #                 self.to_rotate = 360
+    #                 self.to_rotate_last_axis = 0
+    #             else:
+    #                 print("Error rotating axis...")
+    #                 return
+    #
+    #             self.parent.gfx_widget.rotate_object(self.last_axis, True)
+    #             #if self.last_axis == 0:
+    #             #    self.parent.gfx_widget.rotate_object(0, True)
+    #             #elif self.last_axis == 2:
+    #             #    self.parent.gfx_widget.rotate_object(2, True)
+    #
+    #         self.msleep(20)
+    #         if self.rotated < self.to_rotate:
+    #             self.parent.gfx_widget.rotate_object(self.current_axis)
+    #             self.rotated = self.rotated + 0.2
+    #
+    #         else:
+    #             print("total rotated {} ".format(self.rotated))
+
+    def status_changed_event(self):
+        print('ROTATION EMIT! CURRENT THREAD: ' + self.parent.currentThread().objectName())
+        msg = self.parent.main.gantry_status.currentMessage()
+        if msg == "Gantry:   Moving X to IL...":
+            print("passing opportunity to move...")
+            pass
+        elif msg == "Gantry:   Moving Y to IL...":
+            print("rotating because we are moving y..")
+            # to_rotate = 90
+            # rotated = 0
+            # while rotated < to_rotate:
+            #     self.parent.gfx_widget.rotate_object(1, 10)
+            #     rotated = rotated + 10
+            #     self.msleep(100)
+            # to_rotate = 90
+            # rotated = 0
+            # while rotated < to_rotate:
+            #     self.parent.gfx_widget.rotate_object(0, 10)
+            #     rotated = rotated + 10
+            #     self.msleep(100)
+            # to_rotate = 90
+            # rotated = 0
+            # while rotated < to_rotate:
+            #     self.parent.gfx_widget.rotate_object(0, 10, True)
+            #     rotated = rotated + 10
+            #     self.msleep(100)
+            self.parent.gfx_widget.rotate_object(1, 90)
+            #self.msleep(9000)
+
+        elif msg == "Gantry:   Moving Z to IL...":
+            self.parent.gfx_widget.rotate_object(1, 90, True)
+            # to_rotate = 90
+            # rotated = 0
+            # while rotated < to_rotate:
+            #     self.parent.gfx_widget.rotate_object(1, 10, True)
+            #     rotated = rotated + 10
+            #     self.msleep(100)
+            pass
+        else:
+            print("status changed signal received")
+
+
+    # def set_moving_axis(self, axis):
+    #     self.last_axis = self.current_axis
+    #     self.moving_axis = axis
+    #
+    #     if self.moving_axis != -1 and self.moving_axis != self.last_axis:
+    #         self.trigger = True
+    #         self.rotated = 0
+
+
+class GraphicsWidget(QWidget):
     """
-    Thread for graphics rendering.
+    Widget for the OpenGL Window.
+    (TODO: see if ogl context is in main thread or if it spawns a new one)
     """
     def __init__(self, parent):
         super().__init__()
+        #self.setObjectName("Graphics Thread")
         self.parent = parent
 
         self.window = GfxWindow(self, self.parent)
@@ -1278,16 +1390,11 @@ class GraphicsThread(QThread):
         # QLayout
         print("window opened....")
 
-        #for i in range(0, 3875):
-        #    self.move_needle(1, 0)
-            #self.msleep(1)
-
     #X_AXIS = 0
     #Y_AXIS = 1
     #Z_AXIS = 2
     # define FORWARD 0
     # define BACKWARD 1
-
     def move_needle(self, axis, dir):
         if axis == 0: # x axis
             gfx_axis = 0
@@ -1308,12 +1415,41 @@ class GraphicsThread(QThread):
             print("unknown axis {}".format(axis))
             return
 
+        #self.parent.obj_rotation_thread.set_moving_axis(axis)
         self.window.gfx_widget.needle_position[gfx_axis] = self.window.gfx_widget.needle_position[gfx_axis] + amt
         self.needle_counter = self.needle_counter + 1
         if self.needle_counter == 100:
             self.window.gfx_widget.update()
             qApp.processEvents()
             self.needle_counter = 0
+
+    # move object at best angle for corresponding axis...
+    # X_AXIS = 0
+    # Y_AXIS = 1
+    # Z_AXIS = 2
+    def rotate_object(self, axis, angle, ccw=False):
+        self.window.gfx_widget.angle = angle
+
+        vector_val = 350
+        if ccw:
+            vector_val = -vector_val
+
+        if axis == 0:
+            self.window.gfx_widget.ux = vector_val
+            self.window.gfx_widget.uy = 0
+            self.window.gfx_widget.uz = 0
+        elif axis == 1:
+            self.window.gfx_widget.ux = 0
+            self.window.gfx_widget.uy = vector_val
+            self.window.gfx_widget.uz = 0
+        elif axis == 2:
+            self.window.gfx_widget.ux = 0
+            self.window.gfx_widget.uy = 0
+            self.window.gfx_widget.uz = vector_val
+
+        self.window.gfx_widget.rotation = True
+        self.window.gfx_widget.update()
+        QApplication.processEvents()
 
 
 class GfxWindow(QDialog):
@@ -1323,6 +1459,7 @@ class GfxWindow(QDialog):
 
         self.parent = parent
         self.main = main
+        #print('CURRENT THREAD GFX WINDOW: ' + self.parent.currentThread().objectName())
         self.resize(600, 600)
 
         self.gfx_widget = OpenGLWidget(self, self.parent)
@@ -1456,6 +1593,7 @@ class OpenGLWidget(QOpenGLWidget):
         #self.fs = shaders.compileShader(FRAGMENT_SHADER, GL.GL_FRAGMENT_SHADER)
         #self.shader = shaders.compileProgram(self.vs, self.fs)
 
+        #print('CURRENT THREAD GRAPHICS: ' + self.window.parent.currentThread().objectName())
         self.program = GL.glCreateProgram()
         vertex = GL.glCreateShader(GL.GL_VERTEX_SHADER)
         fragment = GL.glCreateShader(GL.GL_FRAGMENT_SHADER)
@@ -1619,3 +1757,4 @@ class OpenGLWidget(QOpenGLWidget):
 
     def sizeHint(self):
         return QSize(GFX_WINDOW_WIDTH, GFX_WINDOW_HEIGHT)
+
