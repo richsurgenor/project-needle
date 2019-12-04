@@ -137,15 +137,16 @@ def final_selection(centers, size, index=False):
         each = centers[i]
         # original box_friend dimensions were 60x300 for a 3280, 2464 array
         # so the ratio is x/3280 and y/2464
-        box_friends = [40*size[0]/3280, 150*size[1]/2464]  # dimensions of box to check with
-        box_enemies = [120*size[0]/3280, 24*size[1]/2464] # don't forget, dividy by 2 so it's larger than appears!
+        box_friends = [100 * size[0] / 3280, 300 * size[1] / 2464]  # dimensions of box to check with
+        box_enemies = [300 * size[0] / 3280,
+                       60 * size[1] / 2464]  # don't forget, dividy by 2 so it's larger than appears!
         [npoints, standev, avgdist, maxdist] = check_box(each, centers, box_friends, box_enemies)
         """
         Ironically, this fucntion works better if we ignore the number of points and instead use the
         standard deviation of the xcoordinates only as the check. I verified this while I was messing
         around with different images. - JPS
         """
-        if standev < hold[1] and npoints > hold[0]:
+        if npoints > hold[0]: # and standev < hold[1]
             hold = [npoints, standev, avgdist, maxdist]
             if index:
                 final_selection = i

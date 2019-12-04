@@ -10,7 +10,7 @@ Justin Sutherland, Laura Grace Ayers.
 
 # GUI for Project Needle, mainly allowing the user to view ideal points for needle insertion to veins.
 
-from PyQt5.QtCore import Qt, QCoreApplication, QSize, QThread, QFile, QTextStream, QPoint
+from PyQt5.QtCore import Qt, QCoreApplication, QSize, QThread, QFile, QTextStream, QPoint, pyqtSignal
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QPixmap, QPainter, QImage, QColor, QKeySequence, QSurfaceFormat, QOpenGLVertexArrayObject
 import numpy
@@ -52,6 +52,8 @@ DEFAULT_MODE = AUTOMATIC
 BORDER_SIZE = 10
 HALF_BORDER_SIZE = BORDER_SIZE/2
 FPS = 10
+GFX_ON_START = True
+GFX_AUTO_ROTATE = True
 
 STILL_IMAGE_CAPTURE = 0 # broken, don't use.
 
@@ -118,7 +120,7 @@ def set_forwarding_settings():
 
     GANTRY_ON = 1
     MOCK_MODE_IMAGE_PROCESSING = 0
-    MOCK_MODE_GANTRY = 0
+    MOCK_MODE_GANTRY = 1
 
     SAVE_RAWIMG = 1
 
@@ -277,8 +279,9 @@ class StatusThread(QThread):
     Thread maintaining status assets, because if main thread is halted qt will be nonoperational.
     """
 
-    def __init__(self, gantry_status, processing_status):
+    def __init__(self, parent, gantry_status, processing_status):
         super().__init__()
+        self.parent = parent
         self.gantry_status = gantry_status
         self.processing_status = processing_status
         if GANTRY_ON:
@@ -598,8 +601,8 @@ class QModeMenuWidget(QWidget):
 
     def mode_change_event(self, button):
         self.parent.output_box.reset()
-        self.parent.gantry_status.showMessage("Gantry:   ")
-        self.parent.processing_status.showMessage("Processing:   ")
+        #self.parent.gantry_status.showMessage("Gantry:   ")
+        #self.parent.processing_status.showMessage("Processing:   ")
         pass
 
 
@@ -653,19 +656,20 @@ class MainWindow(QMainWindow):
 
         self.video_frame = QInputBox("", None)
         self.input_box = QGroupBox("Input Image") #QImageGroupBox("Input Image", self.video_frame)
-        self.input_box_status = QLabel("Change Camera: ")
+        self.gfx_cb_autorotate = QLabel("")
+        #self.gfx_cb_autorotate.setChecked(GFX_AUTO_ROTATE)
+        #self.gfx_cb_autorotate.clicked.connect(self.gfx_cb_autorotate_event)
 
         input_box_layout = QVBoxLayout()
         self.input_box.setLayout(input_box_layout)
 
         input_box_layout.addWidget(self.video_frame)
-        input_box_layout.addWidget(self.input_box_status)
+        input_box_layout.addWidget(self.gfx_cb_autorotate)
         self.pics_hbox.addWidget(self.input_box) #(self.lb)
         self.feed = PreviewThread(self.camera, self.video_frame)
         self.feed.start()
-
         # Init thread that manages Gantry...
-        self.status_thread = StatusThread(self.gantry_status, self.processing_status)
+        self.status_thread = StatusThread(self, self.gantry_status, self.processing_status)
         self.status_thread.start()
         self.gc = self.status_thread.gc
 
@@ -686,11 +690,13 @@ class MainWindow(QMainWindow):
         btn_close.clicked.connect(self.close_event)
         btn_settings = QPushButton("Settings")
         btn_settings.clicked.connect(self.settings_event)
-        btn_debug_cmds = QPushButton("Debug Cmds")
-        btn_debug_cmds.clicked.connect(self.debug_cmds_event)
+        #btn_debug_cmds = QPushButton("Debug Cmds")
+        #btn_debug_cmds.clicked.connect(self.debug_cmds_event)
+        gfx_view = QPushButton("GFX View")
+        gfx_view.clicked.connect(self.gfx_view_event)
 
         self.btn_widget = QWidget()
-        btn_panel = _createCntrBtn(btn_debug_cmds, btn_settings, btn_reset, btn_calibrate, btn_close)
+        btn_panel = _createCntrBtn(gfx_view, btn_settings, btn_reset, btn_calibrate, btn_close)
         self.btn_widget.setLayout(btn_panel)
         self._layout.addWidget(self.btn_widget)
 
@@ -705,13 +711,22 @@ class MainWindow(QMainWindow):
 
         self.move(self.window().x()+450, self.window().y()+20)
 
-        self.show()
-        #QApplication.processEvents()
+        # Init graphics
+        if GFX_ON_START:
+            self.start_gfx_thread()
+        else:
+            self.gfx_thread = None
 
+        QApplication.processEvents()
+        self.show()
+
+    def start_gfx_thread(self):
         self.gfx_thread = GraphicsThread(self)
         self.gfx_thread.start()
         self.gc.gfx_thread = self.gfx_thread
 
+    def gfx_cb_autorotate_event(self):
+        pass
 
     def get_active_mode(self):
         return self.checkbox_widget.group.checkedId() # will correspond to modes
@@ -721,7 +736,7 @@ class MainWindow(QMainWindow):
         self.output_box.display_coords.repaint()
 
     def display_injection_site(self, x, y, x_steps, y_steps):
-        self.output_box.display_injection_site_label.setText("Injection Site(mm):    x: {0:.2f} away. y: {0:.2f} down.".format(x, y) \
+        self.output_box.display_injection_site_label.setText("Injection Site(mm):    x: {0:.2f} away. y: {1:.2f} down.".format(x, y) \
                 + "\nInjection Site(steps): x: " + str(x_steps) + " away. y: " + str(y_steps) + " down.")
         self.output_box.display_injection_site_label.repaint()
 
@@ -844,7 +859,13 @@ class MainWindow(QMainWindow):
             raw = self.camera.capture_still_image()
         else:
             raw = self.feed.rawframe
-
+        try:
+            if not raw:
+                QMessageBox.information(None, 'No input image', 'Woops! No input image to process.', QMessageBox.Ok)
+                return
+        except:
+            #numpy is stupid so it tries to throw an exception here if the image exists.
+            pass
         # curious enough cvting to correct colors seems to throw off pts
         #if not USING_PI and not FORWARDING:
         #if isinstance(self.camera, FakeCamera) or isinstance(self.camera, Camera):
@@ -894,6 +915,7 @@ class MainWindow(QMainWindow):
         try:
             centers = self.processor.get_optimum_points(thresholding_img)
         except Exception as e:
+            self.processing_status.showMessage("Processing:   Not enough centers found...")
             print("=====Unknown Error getting centers..=====")
             print("{} : {}".format(type(e), e))
             print_tb(e.__traceback__)
@@ -929,6 +951,7 @@ class MainWindow(QMainWindow):
                 self.processing_status.showMessage("Processing:   Final selection complete...")
                 self.process_point()
             else:
+                self.processing_status.showMessage("Processing:   Final selection failed, but select a point!...")
                 QMessageBox.information(None, 'Error 2', 'No final selection was returned.', QMessageBox.Ok)
                 if LOGGING:
                     log_image(self.processor.img_in, "error_2_num")
@@ -973,6 +996,15 @@ class MainWindow(QMainWindow):
             self.gfx_thread.move_needle(2, 0)
         pass
 
+    def gfx_view_event(self):
+        if self.gfx_thread:
+            if self.gfx_thread.window.isHidden():
+                self.gfx_thread.window.show()
+            else:
+                self.gfx_thread.window.hide()
+        else:
+            self.start_gfx_thread()
+
     # verticies = (
     #     (4, -8, -12),
     #     (4, 8, -12),
@@ -987,7 +1019,7 @@ class MainWindow(QMainWindow):
 # in mm
 STARTING_CAMERA_HEIGHT=0
 STARTING_CAMERA_DISTANCE=225 #900
-GANTRY_WIDTH = 108.0/2 #152.0
+GANTRY_WIDTH = 152.0/2
 
 BOX_HEIGHT = 140.0/2
 STARTING_GANTRY_HEIGHT = 60.0
@@ -1390,6 +1422,11 @@ class OpenGLWidget(QOpenGLWidget):
         self.zoom = 120
         self.change = False
         self.rotation = False
+
+        self.ux = 0
+        self.uy = 0
+        self.uz = 0
+        self.angle = 0
         self.CT = None
         self.needle_position = [-GANTRY_WIDTH, STARTING_GANTRY_HEIGHT, -STARTING_GANTRY_DEPTH]
 
@@ -1516,6 +1553,7 @@ class OpenGLWidget(QOpenGLWidget):
                 #GL.glMatrixMode(GL.GL_MODEL_VIEW)
                 GL.glLoadMatrixf(self.CT)
                 GL.glRotatef(self.angle, self.ux, self.uy, 0)
+                #print("angle: {} ux: {} uy: {}".format(self.angle, self.ux, self.uy))
                 self.CT = GL.glGetFloatv(GL.GL_MODELVIEW_MATRIX)
                 self.rotation=False
                 pass

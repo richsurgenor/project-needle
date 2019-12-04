@@ -89,7 +89,7 @@ class Processor(AbstractProcessor):
         """
         mask = iv.create_mask(self.img_in, 100, 255)
         threshold = int(255 * 0.5)
-        low = iv.adapt_thresh(clahe_img, 255, threshold, 10)
+        low = iv.adapt_thresh(clahe_img, 255, threshold, 15)
         high = iv.adapt_thresh(clahe_img, 255, threshold, 20)  # we are creating a bandpass filter here
         masked_low = iv.apply_mask(low, mask)
         masked_high = iv.apply_mask(high, mask)
@@ -178,8 +178,8 @@ class GantryMock(threading.Thread):
             elif req == REQ_MOVE_Y_HOME:
                 pass
             elif req == REQ_GO_TO_WORK:
-                self.y_go_to_home()
-                time.sleep(2)
+                #self.y_go_to_home()
+                #time.sleep(2)
                 self.move_cap_to_il()
                 time.sleep(5)
                 self.position_needle()
@@ -206,14 +206,16 @@ class GantryMock(threading.Thread):
             time.sleep(0.001)
 
     def move_cap_to_il(self):
-        self.send_cmd(CMD_STATUS_MSG, "Moving to insertion location...")
+        #self.send_cmd(CMD_STATUS_MSG, "Moving to insertion location...")
+        self.send_cmd(CMD_STATUS_MSG, "Moving X to IL...")
         for i in range(0, self.des_point['x']):
             self.send_cmd(CMD_POSITION_UPDATE, "00")
             time.sleep(0.001)
+        self.send_cmd(CMD_STATUS_MSG, "Moving Y to IL...")
         for i in range(0, self.des_point['y']):
             self.send_cmd(CMD_POSITION_UPDATE, "10")
             time.sleep(0.001)
-
+        self.send_cmd(CMD_STATUS_MSG, "Moving Z to IL...")
         # lets say 1500 steps
         for i in range(0, 1500):
             self.send_cmd(CMD_POSITION_UPDATE, "20")
@@ -447,7 +449,7 @@ class GantryController(AbstractGantryController):
                     print("Arduino told gantry controller (gui) that it is initialized...")
                 elif cmd == CMD_STATUS_MSG:
                     msg = line[1:].decode('ascii')
-                    print(msg)
+                    print("Gantry: " + msg)
                     self.msg = msg
                 elif cmd == CMD_WAIT_COORDINATE:
                     """
