@@ -38,7 +38,7 @@ void gantry_init(){
 	digitalWrite(4, HIGH);
 	delay(6000);
 	digitalWrite(4, LOW);
-	myservo.attach(A2);  // attaches the servo on pin A2 to the servo object
+	myservo.attach(A3);  // attaches the servo on pin A2 to the servo object
 	//Serial.println("Gantry Init");
 	#if !HEADLESS
 	    status_msg("Initialized Gantry...");
@@ -128,17 +128,14 @@ int wait_for_coordinate(){
 /********************************************************************/
 int move_cap_to_IL(){
 
-	int z_depth = 0;
+	int dir, z_depth = 0;
 	int result[2];
 
-	move_stepper(X_AXIS, x_coord, FORWARD);
-	move_stepper(Y_AXIS, y_coord, FORWARD);
-	z_depth = move_stepper(Z_AXIS, z_coord, FORWARD);
-	while(z_found == 0){
-		move_stepper(Z_AXIS, z_depth, BACKWARD);
-		delay(100);
-		z_depth = move_stepper(Z_AXIS, z_coord, FORWARD);
-	}
+	dir = FORWARD;
+	move_stepper(X_AXIS, x_coord, dir);
+	move_stepper(Y_AXIS, y_coord, dir);
+	z_depth = move_stepper(Z_AXIS, z_coord, dir);
+	
 	Serial.println("z_depth 2: ");
 	Serial.println(z_depth);
 	char output[50];
@@ -248,6 +245,8 @@ void inject_needle(){
 	Serial.println(val);
 	val = map(val, 0, 1023, 30, 180);
 	Serial.println(val);
+	myservo.write(val);
+	delay(3000);
 	myservo.write(val);
 
 }
@@ -508,6 +507,7 @@ int depth_finder(){
 			Serial.println(debounceCap);
 			z_found = 1;
 		}
+	z_found = 1;
 	return(z_depth);
 }
 
@@ -549,7 +549,6 @@ int process_req(const char* msg) {
             status_msg("Moving Y Home...");
             move_y_home();
             send_cmd(CMD_WAIT_COORDINATE);
-
             m = wait_for_coordinate();
             break;
 		*/

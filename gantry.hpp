@@ -4,10 +4,10 @@
 #define SCREW_LEAD_Y	8
 #define SCREW_LEAD_Z	8
 #define STEPS_PER_REVOLUTION	200
-#define MM_TO_Y_HOME	155  //was 151
+#define MM_TO_Y_HOME	0  //was 151
 #define NEEDLE_Z_PROJ	10
-#define Z_REALIGN	5
-#define	NEEDLE_Y_PROJ	12
+#define Z_REALIGN	13
+#define	NEEDLE_Y_PROJ	13
 #define NEEDLE_X_PROJ	21.75
 #define SERVO_BEGIN		0
 #define SERVO_INJECT_DIST 100
