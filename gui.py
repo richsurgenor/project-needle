@@ -72,7 +72,7 @@ if USING_PI:
 
     GANTRY_ON = 1                    # Control Gantry on/off for normal/mock modes
     MOCK_MODE_IMAGE_PROCESSING = 0   # Fake image processing but still run everything else
-    MOCK_MODE_GANTRY = 1             # Fake Gantry connection but still run everything else
+    MOCK_MODE_GANTRY = 0             # Fake Gantry connection but still run everything else
 
     CAMERA_RESOLUTION_WIDTH = 1920
     CAMERA_RESOLUTION_HEIGHT = 1080
@@ -118,7 +118,7 @@ def set_forwarding_settings():
 
     GANTRY_ON = 1
     MOCK_MODE_IMAGE_PROCESSING = 0
-    MOCK_MODE_GANTRY = 1
+    MOCK_MODE_GANTRY = 0
 
     SAVE_RAWIMG = 1
 
@@ -703,6 +703,8 @@ class MainWindow(QMainWindow):
         self.last_rawimg = None
         self.masked_img = None
 
+        self.move(self.window().x()+450, self.window().y()+20)
+
         self.show()
         #QApplication.processEvents()
 
@@ -1269,6 +1271,9 @@ class GraphicsThread(QThread):
             amt = Z_MM_PER_STEP
             if dir == FORWARD:
                 amt = -1 * amt
+        else:
+            print("unknown axis {}".format(axis))
+            return
 
         self.window.gfx_widget.needle_position[gfx_axis] = self.window.gfx_widget.needle_position[gfx_axis] + amt
         self.needle_counter = self.needle_counter + 1
@@ -1301,7 +1306,7 @@ class GfxWindow(QDialog):
         right = QShortcut(Qt.Key_Right, self, self.gfx_widget.changePerspective3)
         left = QShortcut(Qt.Key_Left, self, self.gfx_widget.changePerspective4)
 
-        self.move(self.main.window().x() - 600, self.main.window().y() + 400)
+        self.move(self.main.window().x() - 300, self.main.window().y() + 200)
         self.setWindowTitle("GFX View")
 
         self.show()
