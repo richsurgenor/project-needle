@@ -10,9 +10,11 @@ Justin Sutherland, Laura Grace Ayers.
 
 # GUI for Project Needle, mainly allowing the user to view ideal points for needle insertion to veins.
 
-from PyQt5.QtCore import Qt, QCoreApplication, QSize, QThread, QFile, QTextStream, QPoint
+from PyQt5.QtCore import Qt, QObject, QCoreApplication, QSize, QThread, QFile, QTextStream, QPoint, pyqtSignal, \
+                    QTimer, QEventLoop
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QPixmap, QPainter, QImage, QColor, QKeySequence, QSurfaceFormat, QOpenGLVertexArrayObject
+
 import numpy
 import cv2
 import sys
@@ -52,6 +54,8 @@ DEFAULT_MODE = AUTOMATIC
 BORDER_SIZE = 10
 HALF_BORDER_SIZE = BORDER_SIZE/2
 FPS = 10
+GFX_ON_START = True
+GFX_AUTO_ROTATE = True
 
 STILL_IMAGE_CAPTURE = 0 # broken, don't use.
 
@@ -72,7 +76,7 @@ if USING_PI:
 
     GANTRY_ON = 1                    # Control Gantry on/off for normal/mock modes
     MOCK_MODE_IMAGE_PROCESSING = 0   # Fake image processing but still run everything else
-    MOCK_MODE_GANTRY = 1             # Fake Gantry connection but still run everything else
+    MOCK_MODE_GANTRY = 0             # Fake Gantry connection but still run everything else
 
     CAMERA_RESOLUTION_WIDTH = 1920
     CAMERA_RESOLUTION_HEIGHT = 1080
@@ -143,7 +147,7 @@ def set_forwarding_settings():
     CROPPED_RESOLUTION_HEIGHT = 1000 # clip height because uneven distribution of light
 
     if not CROPPING_ENABLED:
-        factor = 4
+        factor = 2
         GUI_IMAGE_SIZE_WIDTH = CAMERA_RESOLUTION_WIDTH / factor
         GUI_IMAGE_SIZE_HEIGHT = CAMERA_RESOLUTION_HEIGHT / factor
     else:
@@ -154,8 +158,9 @@ def set_forwarding_settings():
     CLIP_RAILS_THROUGH_NUMPY = True
 
 FAKE_INPUT_IMG = 1
+
 if FAKE_INPUT_IMG:
-    FAKE_INPUT_IMG_NAME = "./test_images/rich.jpg"
+    FAKE_INPUT_IMG_NAME = "./test_images/jackson.jpg"
     CAMERA_RESOLUTION_WIDTH = 1000#3280
     CAMERA_RESOLUTION_HEIGHT = 1000#2464
     GUI_IMAGE_SIZE_WIDTH = 500 #550  # 640
@@ -163,7 +168,7 @@ if FAKE_INPUT_IMG:
     CROPPING_ENABLED = 0
     CROPPED_RESOLUTION_WIDTH = 2200
     CROPPED_RESOLUTION_HEIGHT = 2464
-    CLIP_RAILS_THROUGH_NUMPY=False
+    CLIP_RAILS_THROUGH_NUMPY=True
 
 def ui_main(fwd=False):
     """
@@ -226,7 +231,7 @@ class FakeCamera:
         # self.rawframe = cv2.resize(self.rawframe, dsize=(GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT), interpolation=cv2.INTER_CUBIC)
         # cv2.imwrite('testproc.jpg', self.rawframe)
         self.opened = False
-        #self.fakepic = cv2.cvtColor(self.rawframe, cv2.COLOR_RGB2BGR)
+        #self.rawframe = cv2.cvtColor(self.rawframe, cv2.COLOR_RGB2BGR)
 
     def get_frame(self):
         return self.rawframe
@@ -276,39 +281,38 @@ class StatusThread(QThread):
     Thread maintaining status assets, because if main thread is halted qt will be nonoperational.
     """
 
-    def __init__(self, gantry_status, processing_status):
+    def __init__(self, parent, gantry_status, processing_status):
         super().__init__()
+        self.parent = parent
         self.gantry_status = gantry_status
         self.processing_status = processing_status
         if GANTRY_ON:
             self.gc = api.GantryController(MOCK_MODE_GANTRY)
             self.gc.start()
         self.msleep(100)
+        self.last_msg = ""
+        self.obj_rotation_thread = None
         #self.gc.send_msg(api.REQ_ECHO_MSG, "Connected to Arduino!")
 
     def run(self):
         while True:
             if self.gc:
                 self.gantry_status.showMessage("Gantry:   " + self.gc.msg)
-                self.msleep(1000)
 
-        """
-        self.status.showMessage("STATUS: Connecting to Gantry..")
+                if GFX_AUTO_ROTATE:
+                    if self.parent.finished_init and self.last_msg != self.gc.msg:
+                        if not self.obj_rotation_thread:
+                            self.obj_rotation_thread = ObjectRotationThread(self.parent, self.parent.gfx_widget)
+                            # self.obj_rotation_thread.th
+                            self.obj_rotation_thread.start()
+                            self.parent.obj_rotation_thread = self.obj_rotation_thread
+                        while not self.obj_rotation_thread.obj_rotater:
+                            pass
+                        #print('CURRENT THREAD 1: ' + self.currentThread().objectName())
+                        self.obj_rotation_thread.obj_rotater.msg_changed.emit()
+                        self.last_msg = self.gc.msg
 
-        self.status.showMessage("STATUS: Gantry going home..")
-        self.gc.mutex.acquire()
-        self.gc.mode = 1
-        self.gc.mutex.release()
-
-        while not self.gc.gantry.is_home():
-            pass
-
-        self.status.showMessage("STATUS: Gantry is Home..")
-        self.msleep(1000)
-        self.status.showMessage("STATUS: Waiting for user input..")
-        # self.gc.send_gantry_home()
-        """
-
+                self.msleep(100)
 
 
 class PreviewThread(QThread):
@@ -349,7 +353,7 @@ class PreviewThread(QThread):
     def run(self):
         while True:
             self.next_frame_slot()
-            time_slept = int((float(1)/FPS) * 1000)
+            time_slept = 1000
             self.msleep(time_slept) # TODO: make this settable
             qApp.processEvents()
 
@@ -366,24 +370,60 @@ class QProcessedImageGroupBox(QGroupBox):
         self.parent = parent
         self._layout = QVBoxLayout()
         self._layout.setSpacing(0)
+        self._layout.setSizeConstraint(QLayout.SetMinimumSize)
+        self.split_holder = QWidget()
+        self.split_layout = QHBoxLayout()
+        self.split_layout.setSpacing(0)
+        self.coord_holder = QWidget()
+        #self.coord_holder.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+        self.coord_layout = QVBoxLayout()
+        self.coord_layout.setSpacing(0)
+        self.coord_holder.setLayout(self.coord_layout)
+
+        self.settings_holder = QWidget()
+        self.settings_layout = QVBoxLayout()
+        self.settings_layout.setSpacing(0)
+        self.settings_holder.setLayout(self.settings_layout)
+
         self.setLayout(self._layout)
         self.img = img
 
         self.image_label = QImageLabel("", img)
-        self.display_coords = QLabel("Coordinates(pixels): ")
-        self.display_injection_site_label = QLabel("Injection Site(mm): \nInjection Site(steps): ")
-        self.display_coords.setStyleSheet("font-weight: bold; color: red");
-        self.display_injection_site_label.setStyleSheet("font-weight: bold; color: red");
 
+        self.display_coords = QLabel("Coordinates(pixels): ")
+        self.display_injection_site_label = QLabel("Injection Site(mm):   \nInjection Site(steps): ")
+        self.display_coords.setStyleSheet("color: red");
+        self.display_injection_site_label.setStyleSheet("color: red");
+
+        #self.coord_layout.addWidget(self.image_label)
         self._layout.addWidget(self.image_label)
-        self._layout.addWidget(self.display_coords)
-        self._layout.addWidget(self.display_injection_site_label)
+        self.coord_layout.addWidget(self.display_coords)
+        self.coord_layout.addWidget(self.display_injection_site_label)
 
         self.points = None
+        self.chosen = None
 
+        self.use_masked_image = QCheckBox("Use Masked Image")
+        self.use_masked_image.setChecked(True)
+        self.use_masked_image.clicked.connect(self.change_use_masked_img)
+        self.settings_layout.addWidget(self.use_masked_image)
+        #self.settings_layout.setAlignment(Qt.AlignTop)
+
+        self.split_layout.addWidget(self.coord_holder)
+        self.split_layout.addWidget(self.settings_holder)
+        self.split_holder.setLayout(self.split_layout)
+
+        self._layout.setSizeConstraint(QLayout.SetFixedSize)
+
+        self._layout.addWidget(self.split_holder)
         # Configure mouse press on processed image widget
         self.image_label.mousePressEvent = self.get_pos
         #self.image_label.connect(self, pyqtSignal("clicked()"), self.getPos)
+        #self.coord_holder.sizeHint = lambda: QSize(50, 50)
+
+        self.coord_holder.setFixedHeight(70)
+        self.coord_holder.setFixedWidth(360)
+        self.settings_holder.setFixedHeight(64)
 
     def get_layout(self):
         return self._layout
@@ -420,10 +460,14 @@ class QProcessedImageGroupBox(QGroupBox):
             self.points = [(int(selected_x), int(selected_y))]
             self.parent.processor.centers = [(scaled_x, scaled_y)]
             chosen = 0 # only one point...
-            self.parent.draw_processed_img_with_pts(self.parent.masked_img, self.points, chosen)
+            self.chosen = 0
+            if self.use_masked_image.isChecked():
+                self.parent.draw_processed_img_with_pts(self.parent.masked_img, self.points, chosen)
+            else:
+                self.parent.draw_processed_img_with_pts(self.parent.last_rawimg, self.points, chosen)
             self.image_label.repaint()
-            self.parent.display_coordinates(self.parent.output_box.points[chosen][0],
-                                            self.parent.output_box.points[chosen][1])
+            self.parent.display_coordinates(self.parent.output_box.points[chosen][0]*float((CAMERA_RESOLUTION_WIDTH/GUI_IMAGE_SIZE_WIDTH)),
+                                            self.parent.output_box.points[chosen][1]*float((CAMERA_RESOLUTION_HEIGHT/GUI_IMAGE_SIZE_HEIGHT)))
             self.parent.process_point(index=chosen)
         else:
 
@@ -444,12 +488,31 @@ class QProcessedImageGroupBox(QGroupBox):
                     best_y = diff_y
                     #print("diff_x: " + str(selected_x - x) + " diff_y: " + str(selected_y - y))
                     chosen = i
+                    self.chosen = i
             #print("best_x: " + str(best_x) + " best_y: " + str(best_y))
             self.parent.draw_processed_img_with_pts(self.image_label.img, self.points, chosen)
-            self.parent.display_coordinates(self.parent.output_box.points[chosen][0],
-                                            self.parent.output_box.points[chosen][1])
+            self.parent.display_coordinates(self.parent.output_box.points[chosen][0]*float((CAMERA_RESOLUTION_WIDTH/GUI_IMAGE_SIZE_WIDTH)),
+                                            self.parent.output_box.points[chosen][1]*float((CAMERA_RESOLUTION_HEIGHT/GUI_IMAGE_SIZE_HEIGHT)))
             self.parent.process_point(index=chosen)
 
+    def change_use_masked_img(self):
+        if not self.parent.last_rawimg:
+            QMessageBox.information(None, 'Not available', 'Capture an image first.', QMessageBox.Ok)
+            self.use_masked_image.setChecked(True)
+            return
+
+        mode = self.parent.get_active_mode()
+
+        if mode == MANUAL and not self.points:
+            if self.use_masked_image.isChecked():
+                self.parent.draw_output_img(self.parent.masked_img)
+            else:
+                self.parent.draw_output_img(self.parent.last_rawimg)
+        else:
+            if self.use_masked_image.isChecked():
+                self.parent.draw_processed_img_with_pts(self.parent.masked_img, self.points, self.chosen)
+            else:
+                self.parent.draw_processed_img_with_pts(self.parent.last_rawimg, self.points, self.chosen)
 
 class QImageLabel(QLabel):
     def __init__(self, _, img):
@@ -538,8 +601,8 @@ class QModeMenuWidget(QWidget):
 
     def mode_change_event(self, button):
         self.parent.output_box.reset()
-        self.parent.gantry_status.showMessage("Gantry:   ")
-        self.parent.processing_status.showMessage("Processing:   ")
+        #self.parent.gantry_status.showMessage("Gantry:   ")
+        #self.parent.processing_status.showMessage("Processing:   ")
         pass
 
 
@@ -593,19 +656,24 @@ class MainWindow(QMainWindow):
 
         self.video_frame = QInputBox("", None)
         self.input_box = QGroupBox("Input Image") #QImageGroupBox("Input Image", self.video_frame)
-        self.input_box_status = QLabel("Change Camera: ")
+        self.gfx_cb_autorotate = QLabel("")#QCheckBox("GFX Auto-Rotate")
+        #self.gfx_cb_autorotate.setChecked(GFX_AUTO_ROTATE)
+        #self.gfx_cb_autorotate.clicked.connect(self.gfx_cb_autorotate_event)
 
         input_box_layout = QVBoxLayout()
         self.input_box.setLayout(input_box_layout)
 
         input_box_layout.addWidget(self.video_frame)
-        input_box_layout.addWidget(self.input_box_status)
+        input_box_layout.addWidget(self.gfx_cb_autorotate)
         self.pics_hbox.addWidget(self.input_box) #(self.lb)
         self.feed = PreviewThread(self.camera, self.video_frame)
         self.feed.start()
 
+        self.finished_init = False
+
         # Init thread that manages Gantry...
-        self.status_thread = StatusThread(self.gantry_status, self.processing_status)
+        self.status_thread = StatusThread(self, self.gantry_status, self.processing_status)
+        self.status_thread.setObjectName("Status Thread")
         self.status_thread.start()
         self.gc = self.status_thread.gc
 
@@ -626,12 +694,13 @@ class MainWindow(QMainWindow):
         btn_close.clicked.connect(self.close_event)
         btn_settings = QPushButton("Settings")
         btn_settings.clicked.connect(self.settings_event)
-        btn_debug_cmds = QPushButton("Debug Cmds")
-        btn_debug_cmds.clicked.connect(self.debug_cmds_event)
-
+        #btn_debug_cmds = QPushButton("Debug Cmds")
+        #btn_debug_cmds.clicked.connect(self.debug_cmds_event)
+        gfx_view = QPushButton("GFX View")
+        gfx_view.clicked.connect(self.gfx_view_event)
 
         self.btn_widget = QWidget()
-        btn_panel = _createCntrBtn(btn_debug_cmds, btn_settings, btn_reset, btn_calibrate, btn_close)
+        btn_panel = _createCntrBtn(gfx_view, btn_settings, btn_reset, btn_calibrate, btn_close)
         self.btn_widget.setLayout(btn_panel)
         self._layout.addWidget(self.btn_widget)
 
@@ -641,16 +710,33 @@ class MainWindow(QMainWindow):
         self._layout.addWidget(self.btn_widget2)
 
         self.setAttribute(Qt.WA_DeleteOnClose, True)
-
+        self.last_rawimg = None
         self.masked_img = None
 
+        self.move(self.window().x()+450, self.window().y()+20)
+
+        # Init graphics
+        if GFX_ON_START:
+            self.start_gfx_widget()
+        else:
+            self.gfx_widget = None
+
+        #self.status_thread.moveToThread(self.obj_rotation_thread.thread())
+        #self.obj_rotation_thread.moveToThread(self.status_thread.thread())
+        self.finished_init = True
+
+        QApplication.processEvents()
         self.show()
         QApplication.processEvents()
 
-        self.gfx_thread = GraphicsThread(self)
-        self.gfx_thread.start()
-        self.gc.gfx_thread = self.gfx_thread
+    def start_gfx_widget(self):
+        self.gfx_widget = GraphicsWidget(self)
+        self.gfx_widget.setObjectName("Graphics Thread")
+        #self.gfx_widget.start()
+        self.gc.gfx_widget = self.gfx_widget
 
+    def gfx_cb_autorotate_event(self):
+        pass
 
     def get_active_mode(self):
         return self.checkbox_widget.group.checkedId() # will correspond to modes
@@ -660,7 +746,7 @@ class MainWindow(QMainWindow):
         self.output_box.display_coords.repaint()
 
     def display_injection_site(self, x, y, x_steps, y_steps):
-        self.output_box.display_injection_site_label.setText("Injection Site(mm): x: {0:.2f} away. y: {0:.2f} down.".format(x, y) \
+        self.output_box.display_injection_site_label.setText("Injection Site(mm):    x: {0:.2f} away. y: {1:.2f} down.".format(x, y) \
                 + "\nInjection Site(steps): x: " + str(x_steps) + " away. y: " + str(y_steps) + " down.")
         self.output_box.display_injection_site_label.repaint()
 
@@ -669,7 +755,7 @@ class MainWindow(QMainWindow):
         self.output_box.display_coords.repaint()
 
     def clear_injection_site(self):
-        self.output_box.display_injection_site_label.setText("Injection Site(mm): \nInjection Site(steps): ")
+        self.output_box.display_injection_site_label.setText("Injection Site(mm):    \nInjection Site(steps): ")
         self.output_box.display_injection_site_label.repaint()
 
     #class ProcessingThread(QThread): TODO: do we need this?
@@ -774,16 +860,26 @@ class MainWindow(QMainWindow):
         self.clear_coordinates()
         self.clear_injection_site()
         self.output_box.points = None
+        self.output_box.chosen = None
         self.processor.centers = None
         self.processor.selection = None
+        self.output_box.use_masked_image.setChecked(True)
 
         if STILL_IMAGE_CAPTURE: # should only be on if picamera
             raw = self.camera.capture_still_image()
         else:
             raw = self.feed.rawframe
+        try:
+            if not raw:
+                QMessageBox.information(None, 'No input image', 'Woops! No input image to process.', QMessageBox.Ok)
+                return
+        except:
+            #numpy is stupid so it tries to throw an exception here if the image exists.
+            pass
         # curious enough cvting to correct colors seems to throw off pts
         #if not USING_PI and not FORWARDING:
-        #raw = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB)
+        #if isinstance(self.camera, FakeCamera) or isinstance(self.camera, Camera):
+        raw = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB)
         #if SAVE_RAWIMG:
         cv2.imwrite('gui-rawimg.jpg', raw)
         height, width, channels = raw.shape
@@ -791,6 +887,7 @@ class MainWindow(QMainWindow):
         q_img = QImage(raw.copy().data, width, height, bytes_per_line, QImage.Format_RGB888)
         processed_img = QPixmap.fromImage(q_img)
         processed_img_scaled = processed_img.scaled(GUI_IMAGE_SIZE_WIDTH, GUI_IMAGE_SIZE_HEIGHT, Qt.IgnoreAspectRatio)
+        self.last_rawimg = processed_img_scaled
         self.draw_output_img(processed_img_scaled)
         QCoreApplication.processEvents()
         self.processing_status.showMessage("Processing:   Applying thresholding...")
@@ -828,6 +925,7 @@ class MainWindow(QMainWindow):
         try:
             centers = self.processor.get_optimum_points(thresholding_img)
         except Exception as e:
+            self.processing_status.showMessage("Processing:   Not enough centers found...")
             print("=====Unknown Error getting centers..=====")
             print("{} : {}".format(type(e), e))
             print_tb(e.__traceback__)
@@ -858,10 +956,12 @@ class MainWindow(QMainWindow):
             final_selection = self.processor.get_final_selection(numpy.shape(raw), centers)
             if final_selection:
                 self.display_coordinates(self.output_box.points[final_selection][0],self.output_box.points[final_selection][1]) # TODO what if no coordinate...
+                self.output_box.chosen = final_selection
                 self.draw_processed_img_with_pts(processed_img_scaled, points, final_selection)
                 self.processing_status.showMessage("Processing:   Final selection complete...")
                 self.process_point()
             else:
+                self.processing_status.showMessage("Processing:   Final selection failed, but select a point!...")
                 QMessageBox.information(None, 'Error 2', 'No final selection was returned.', QMessageBox.Ok)
                 if LOGGING:
                     log_image(self.processor.img_in, "error_2_num")
@@ -879,6 +979,7 @@ class MainWindow(QMainWindow):
         self.status_thread.gc = None
         time.sleep(1) # not okay probably
         self.status_thread.gc = api.GantryController(MOCK_MODE_GANTRY)
+        self.status_thread.setObjectName("Gantry Controller")
         self.status_thread.gc.start()
         #self.output_box.image_label.set_status(False)
         # TODO: actually make this reset the entire state of the GUI
@@ -903,30 +1004,40 @@ class MainWindow(QMainWindow):
 
     def debug_cmds_event(self):
         for i in range(0, 8000):
-            self.gfx_thread.move_needle(2, 0)
+            self.gfx_widget.move_needle(2, 0)
         pass
 
+    def gfx_view_event(self):
+        if self.gfx_widget:
+            if self.gfx_widget.window.isHidden():
+                self.gfx_widget.window.show()
+            else:
+                self.gfx_widget.window.hide()
+        else:
+            self.start_gfx_widget()
+
 # in mm
-STARTING_CAMERA_HEIGHT=100
-STARTING_CAMERA_DISTANCE=400 #900
-GANTRY_WIDTH = 108.0 #152.0
+STARTING_CAMERA_HEIGHT=0
+STARTING_CAMERA_DISTANCE=225 #900
+GANTRY_WIDTH = 152.0/2
 
-BOX_HEIGHT = 140.0
-GANTRY_HEIGHT = 60.0
+BOX_HEIGHT = 140.0/2
+STARTING_GANTRY_HEIGHT = 60.0
 
-GANTRY_DEPTH = 265 #673.0
+GANTRY_DEPTH = 265.0/2 #673.0
+STARTING_GANTRY_DEPTH = GANTRY_DEPTH-(150.0)
 
 # Make each unit 1mm
 # Guessing gantry "box" is around 1ft x 2ft x 3ft ~ 1ft=300mm
 verticies = (
-    (GANTRY_WIDTH, -(BOX_HEIGHT+GANTRY_HEIGHT), -GANTRY_DEPTH),
-    (GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), -GANTRY_DEPTH),
-    (-GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), -GANTRY_DEPTH),
-    (-GANTRY_WIDTH, -(BOX_HEIGHT+GANTRY_HEIGHT), -GANTRY_DEPTH),
-    (GANTRY_WIDTH, -(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH),
-    (GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH),
-    (-GANTRY_WIDTH, -(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH),
-    (-GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH)
+    (GANTRY_WIDTH, -(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), -GANTRY_DEPTH),
+    (GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), -GANTRY_DEPTH),
+    (-GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), -GANTRY_DEPTH),
+    (-GANTRY_WIDTH, -(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), -GANTRY_DEPTH),
+    (GANTRY_WIDTH, -(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH),
+    (GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH),
+    (-GANTRY_WIDTH, -(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH),
+    (-GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH)
 )
 
 verticies = numpy.hstack(verticies).reshape(-1,3).astype(numpy.float32)
@@ -940,47 +1051,47 @@ verticies = numpy.hstack(verticies).reshape(-1,3).astype(numpy.float32)
 
 
 vertex_buffer_data = [
-    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH, # red face
-    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
-    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
-    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
-    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
-    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
+    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH, # red face
+    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
 
-    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH, # green face
-    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
-    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
-    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
-    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
-    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH, # green face
+    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
+    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
 
-    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH, # blue face
-    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
-    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
-    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
-    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
-    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH, # blue face
+    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
 
-    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH, # yellow face
-    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
-    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
-    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
-    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
-    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
-    
-    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH, # light blue face
-    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
-    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
-    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
-    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT),-GANTRY_DEPTH,
-    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH, # yellow face
+    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
 
-    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH, # pink face
-    -GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
-    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
-    GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
-    -GANTRY_WIDTH, (BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH,
-    GANTRY_WIDTH,-(BOX_HEIGHT+GANTRY_HEIGHT), GANTRY_DEPTH]
+    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH, # light blue face
+    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
+
+    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH, # pink face
+    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH]
 
 vertex_buffer_data = numpy.array(vertex_buffer_data, dtype=numpy.float32)
 
@@ -1019,58 +1130,20 @@ color_buffer_data = [
     1.0, 1.0, 0,
     1.0, 1.0, 0,
     1.0, 1.0, 0,
-    
+
     0, 0.7, 1.0,
     0, 0.7, 1.0,
     0, 0.7, 1.0,
     0, 0.7, 1.0,
     0, 0.7, 1.0,
     0, 0.7, 1.0,
-    
+
     1.0, 0, 1.0,
     1.0, 0, 1.0,
     1.0, 0, 1.0,
     1.0, 0, 1.0,
     1.0, 0, 1.0,
     1.0, 0, 1.0]
-
-# color_buffer_data = [
-#     0.583,  0.771,  0.014,
-#     0.609,  0.115,  0.436,
-#     0.327,  0.483,  0.844,
-#     0.822,  0.569,  0.201,
-#     0.435,  0.602,  0.223,
-#     0.310,  0.747,  0.185,
-#     0.597,  0.770,  0.761,
-#     0.559,  0.436,  0.730,
-#     0.359,  0.583,  0.152,
-#     0.483,  0.596,  0.789,
-#     0.559,  0.861,  0.639,
-#     0.195,  0.548,  0.859,
-#     0.014,  0.184,  0.576,
-#     0.771,  0.328,  0.970,
-#     0.406,  0.615,  0.116,
-#     0.676,  0.977,  0.133,
-#     0.971,  0.572,  0.833,
-#     0.140,  0.616,  0.489,
-#     0.997,  0.513,  0.064,
-#     0.945,  0.719,  0.592,
-#     0.543,  0.021,  0.978,
-#     0.279,  0.317,  0.505,
-#     0.167,  0.620,  0.077,
-#     0.347,  0.857,  0.137,
-#     0.055,  0.953,  0.042,
-#     0.714,  0.505,  0.345,
-#     0.783,  0.290,  0.734,
-#     0.722,  0.645,  0.174,
-#     0.302,  0.455,  0.848,
-#     0.225,  0.587,  0.040,
-#     0.517,  0.713,  0.338,
-#     0.053,  0.959,  0.120,
-#     0.393,  0.621,  0.362,
-#     0.673,  0.211,  0.457,
-#     0.820,  0.883,  0.371,
-#     0.982,  0.099,  0.879]
 
 color_buffer_data = numpy.array(color_buffer_data, dtype=numpy.float32)
 
@@ -1152,12 +1225,109 @@ Z_MM_PER_STEP = 0.04
 FORWARD = 0
 BACKWARD = 1
 
-class GraphicsThread(QThread):
+class ObjectRotationThread(QThread):
+    def __init__(self, main, gfx_widget):
+        super().__init__()
+        self.setObjectName("Object Rotater Thread")
+        #self.parent = parent
+        self.main = main
+        self.gfx_widget = gfx_widget
+        self.obj_rotater = None
+
+    def run(self):
+        print("started object rotation thread....")
+
+        # The thread that owns this object will inherit the work of
+        # emitted signals!!
+        self.obj_rotater = ObjectRotater(self, self.gfx_widget)
+        self.exec()
+        pass
+
+class ObjectRotater(QObject):
+    msg_changed = pyqtSignal()
+
+    def __init__(self, parent, gfx_widget):
+        super().__init__()
+        self.parent = parent
+        #self.setObjectName("Rotation Thread")
+        self.gfx_widget = gfx_widget
+        self.msg_changed.connect(self.status_changed_event, Qt.AutoConnection)
+        print("done init...")
+
+    def status_changed_event(self):
+        #print('ROTATION EMIT! CURRENT THREAD: ' + self.parent.currentThread().objectName())
+        msg = self.parent.main.gantry_status.currentMessage()
+        if msg == "Gantry:   Moving X to IL...":
+            print("passing opportunity to move...")
+            pass
+        elif msg == "Gantry:   Moving Y to IL...":
+            print("rotating because we are moving y..")
+            to_rotate = 90
+            rotated = 0
+            while rotated < to_rotate:
+                self.parent.gfx_widget.rotate_object(1, 5)
+                rotated = rotated + 5
+                QThread.msleep(25)
+            # to_rotate = 90
+            # rotated = 0
+            # while rotated < to_rotate:
+            #     self.parent.gfx_widget.rotate_object(0, 10)
+            #     rotated = rotated + 10
+            #     self.msleep(100)
+            # to_rotate = 90
+            # rotated = 0
+            # while rotated < to_rotate:
+            #     self.parent.gfx_widget.rotate_object(0, 10, True)
+            #     rotated = rotated + 10
+            #     self.msleep(100)
+            #self.parent.gfx_widget.rotate_object(1, 90)
+            #self.msleep(9000)
+
+        elif msg == "Gantry:   Moving Z to IL...":
+            #self.parent.gfx_widget.rotate_object(1, 90, True)
+            to_rotate = 270
+            rotated = 0
+            while rotated < to_rotate:
+                self.parent.gfx_widget.rotate_object(1, 5)
+                rotated = rotated + 5
+                QThread.msleep(25)
+            pass
+        elif msg == "Gantry:   Moving Y back from IL...":
+            to_rotate = 90
+            rotated = 0
+            while rotated < to_rotate:
+                self.parent.gfx_widget.rotate_object(1, 5)
+                rotated = rotated + 5
+                QThread.msleep(25)
+
+            QThread.msleep(2000)
+            to_rotate = 270
+            rotated = 0
+            while rotated < to_rotate:
+                self.parent.gfx_widget.rotate_object(1, 5)
+                rotated = rotated + 5
+                QThread.msleep(25)
+        else:
+            print("status changed signal received")
+
+
+    # def set_moving_axis(self, axis):
+    #     self.last_axis = self.current_axis
+    #     self.moving_axis = axis
+    #
+    #     if self.moving_axis != -1 and self.moving_axis != self.last_axis:
+    #         self.trigger = True
+    #         self.rotated = 0
+
+
+class GraphicsWidget(QWidget):
     """
-    Thread for graphics rendering.
+    Widget for the OpenGL Window.
+    (TODO: see if ogl context is in main thread or if it spawns a new one)
     """
     def __init__(self, parent):
         super().__init__()
+        #self.setObjectName("Graphics Thread")
         self.parent = parent
 
         self.window = GfxWindow(self, self.parent)
@@ -1167,16 +1337,11 @@ class GraphicsThread(QThread):
         # QLayout
         print("window opened....")
 
-        #for i in range(0, 3875):
-        #    self.move_needle(1, 0)
-            #self.msleep(1)
-
     #X_AXIS = 0
     #Y_AXIS = 1
     #Z_AXIS = 2
     # define FORWARD 0
     # define BACKWARD 1
-
     def move_needle(self, axis, dir):
         if axis == 0: # x axis
             gfx_axis = 0
@@ -1193,13 +1358,45 @@ class GraphicsThread(QThread):
             amt = Z_MM_PER_STEP
             if dir == FORWARD:
                 amt = -1 * amt
+        else:
+            print("unknown axis {}".format(axis))
+            return
 
+        #self.parent.obj_rotation_thread.set_moving_axis(axis)
         self.window.gfx_widget.needle_position[gfx_axis] = self.window.gfx_widget.needle_position[gfx_axis] + amt
         self.needle_counter = self.needle_counter + 1
         if self.needle_counter == 100:
             self.window.gfx_widget.update()
             qApp.processEvents()
             self.needle_counter = 0
+
+    # move object at best angle for corresponding axis...
+    # X_AXIS = 0
+    # Y_AXIS = 1
+    # Z_AXIS = 2
+    def rotate_object(self, axis, angle, ccw=False):
+        self.window.gfx_widget.angle = angle
+
+        vector_val = 350
+        if ccw:
+            vector_val = -vector_val
+
+        if axis == 0:
+            self.window.gfx_widget.ux = vector_val
+            self.window.gfx_widget.uy = 0
+            self.window.gfx_widget.uz = 0
+        elif axis == 1:
+            self.window.gfx_widget.ux = 0
+            self.window.gfx_widget.uy = vector_val
+            self.window.gfx_widget.uz = 0
+        elif axis == 2:
+            self.window.gfx_widget.ux = 0
+            self.window.gfx_widget.uy = 0
+            self.window.gfx_widget.uz = vector_val
+
+        self.window.gfx_widget.rotation = True
+        self.window.gfx_widget.update()
+        QApplication.processEvents()
 
 
 """
@@ -1215,6 +1412,7 @@ class GfxWindow(QDialog):
 
         self.parent = parent
         self.main = main
+        #print('CURRENT THREAD GFX WINDOW: ' + self.parent.currentThread().objectName())
         self.resize(600, 600)
 
         self.gfx_widget = OpenGLWidget(self, self.parent, self.main)
@@ -1231,7 +1429,7 @@ class GfxWindow(QDialog):
         right = QShortcut(Qt.Key_Right, self, self.gfx_widget.changePerspective3)
         left = QShortcut(Qt.Key_Left, self, self.gfx_widget.changePerspective4)
 
-        self.move(self.main.window().x() - 600, self.main.window().y() + 400)
+        self.move(self.main.window().x() - 300, self.main.window().y() + 200)
         self.setWindowTitle("GFX View")
 
         self.show()
@@ -1315,8 +1513,13 @@ class OpenGLWidget(QOpenGLWidget):
         self.zoom = 120
         self.change = False
         self.rotation = False
+
+        self.ux = 0
+        self.uy = 0
+        self.uz = 0
+        self.angle = 0
         self.CT = None
-        self.needle_position = [-GANTRY_WIDTH, GANTRY_HEIGHT, -GANTRY_DEPTH+40]
+        self.needle_position = [-GANTRY_WIDTH, STARTING_GANTRY_HEIGHT, -STARTING_GANTRY_DEPTH]
 
     def initializeGL(self):
 
@@ -1344,6 +1547,7 @@ class OpenGLWidget(QOpenGLWidget):
         #self.fs = shaders.compileShader(FRAGMENT_SHADER, GL.GL_FRAGMENT_SHADER)
         #self.shader = shaders.compileProgram(self.vs, self.fs)
 
+        #print('CURRENT THREAD GRAPHICS: ' + self.window.parent.currentThread().objectName())
         self.program = GL.glCreateProgram()
         vertex = GL.glCreateShader(GL.GL_VERTEX_SHADER)
         fragment = GL.glCreateShader(GL.GL_FRAGMENT_SHADER)
@@ -1444,7 +1648,7 @@ class OpenGLWidget(QOpenGLWidget):
                 #GL.glMatrixMode(GL.GL_MODEL_VIEW)
                 GL.glLoadMatrixf(self.CT)
                 GL.glRotatef(self.angle, self.ux, self.uy, 0)
-                print("angle: {} ux: {} uy: {}".format(self.angle, self.ux, self.uy))
+                #print("angle: {} ux: {} uy: {}".format(self.angle, self.ux, self.uy))
                 self.CT = GL.glGetFloatv(GL.GL_MODELVIEW_MATRIX)
                 self.rotation=False
                 pass
@@ -1461,7 +1665,7 @@ class OpenGLWidget(QOpenGLWidget):
             """
             GL.glPushMatrix()
             GL.glTranslatef(self.needle_position[0], self.needle_position[1], self.needle_position[2])
-            GL.glScalef(20, 20, 20)
+            GL.glScalef(10, 10, 10)
             GL.glRotatef(180, 0, 0, 0)
             GL.glCallList(self.obj.gl_list)
             GL.glPopMatrix()
@@ -1501,7 +1705,7 @@ class OpenGLWidget(QOpenGLWidget):
 
             GL.glPushMatrix()
 
-            GL.glTranslatef(0, GANTRY_HEIGHT/2, 0)
+            GL.glTranslatef(0, STARTING_GANTRY_HEIGHT/2, 0)
             GL.glRotatef(90, 0, 0, 0)
 
             GL.glBegin(GL.GL_QUADS)
@@ -1557,3 +1761,4 @@ class OpenGLWidget(QOpenGLWidget):
 
     def sizeHint(self):
         return QSize(GFX_WINDOW_WIDTH, GFX_WINDOW_HEIGHT)
+

@@ -17,6 +17,7 @@
 Servo myservo;  // create servo object to control a servo
 
 static int x_coord, y_coord, z_coord = 0;
+static int x_coord_og, y_coord_og = 0;
 static int z_found = 0;
 static bool enable = 0;
 
@@ -38,7 +39,7 @@ void gantry_init(){
 	digitalWrite(4, HIGH);
 	delay(6000);
 	digitalWrite(4, LOW);
-	myservo.attach(A2);  // attaches the servo on pin A2 to the servo object
+	myservo.attach(A3);  // attaches the servo on pin A2 to the servo object
 	//Serial.println("Gantry Init");
 	#if !HEADLESS
 	    status_msg("Initialized Gantry...");
@@ -128,19 +129,19 @@ int wait_for_coordinate(){
 /********************************************************************/
 int move_cap_to_IL(){
 
-	int z_depth = 0;
+	int dir, z_depth = 0;
 	int result[2];
 
-	move_stepper(X_AXIS, x_coord, FORWARD);
-	move_stepper(Y_AXIS, y_coord, FORWARD);
-	z_depth = move_stepper(Z_AXIS, z_coord, FORWARD);
-	while(z_found == 0){
-		move_stepper(Z_AXIS, z_depth, BACKWARD);
-		delay(100);
-		z_depth = move_stepper(Z_AXIS, z_coord, FORWARD);
-	}
-	Serial.println("z_depth 2: "); // todo: need to be here?
-	Serial.println(z_depth);
+	dir = FORWARD;
+	status_msg("Moving X to IL...");
+	move_stepper(X_AXIS, x_coord, dir);
+	status_msg("Moving Y to IL...");
+	move_stepper(Y_AXIS, y_coord, dir);
+	status_msg("Moving Z to IL...");
+	z_depth = move_stepper(Z_AXIS, z_coord, dir);
+	
+	//Serial.println("z_depth 2: ");
+	//Serial.println(z_depth);
 	char output[50];
     sprintf(output, "x: %d y: %d", result[0], result[1]);
     status_msg(output);
@@ -249,6 +250,8 @@ void inject_needle(){
 	val = map(val, 0, 1023, 30, 180);
 	Serial.println(val);
 	myservo.write(val);
+	delay(3000);
+	myservo.write(val);
 
 }
 
@@ -285,8 +288,11 @@ void move_back_from_IL(int z_depth){	//this will probably only be used for my te
 	Serial.println(y_dist_travelled);
 	delay(3000);
 
+	status_msg("Moving Z back from IL...");
 	move_stepper(Z_AXIS, z_depth, BACKWARD);			//this is not correct to make z go back home need to account for realignment
+	status_msg("Moving X back from IL...");
 	move_stepper(X_AXIS, x_dist_travelled, BACKWARD);
+	status_msg("Moving Y back from IL...");
 	move_stepper(Y_AXIS, y_dist_travelled, BACKWARD);
 
 }
@@ -448,8 +454,8 @@ int move_stepper(int axis, int nSteps, int dir){
          */
 		
 		z_depth = depth_finder();
-		Serial.println("z_depth 1: "); // todo: need to be here?
-		Serial.println(z_depth);
+		//Serial.println("z_depth 1: "); // todo: need to be here?
+		//Serial.println(z_depth);
 		return(z_depth);
 	}
 
@@ -513,6 +519,7 @@ int depth_finder(){
 			Serial.println(debounceCap);
 			z_found = 1;
 		}
+	z_found = 1;
 	return(z_depth);
 }
 
@@ -554,7 +561,6 @@ int process_req(const char* msg) {
             status_msg("Moving Y Home...");
             move_y_home();
             send_cmd(CMD_WAIT_COORDINATE);
-
             m = wait_for_coordinate();
             break;
 		*/
@@ -569,17 +575,27 @@ int process_req(const char* msg) {
             // TODO: splice string from msg
             break;
         case REQ_GO_TO_WORK:
-            status_msg("Going to work...");
+			if(x_coord == 0 && y_coord == 0) {
+				status_msg("I do not yet have a coordinate...");
+				return 0;
+			}
 			move_y_home();
 			z_depth = move_cap_to_IL();
 			//Serial.println("z_depth 3: ");
 			//Serial.println(z_depth);
+			status_msg("Positioning Needle...");
 			position_needle();
+			status_msg("Injecting Needle...");
 			inject_needle();
+			status_msg("Pulling Needle...");
 			pull_needle();
+			status_msg("Moving back from IL...");
 			move_back_from_IL(z_depth);
-			x_coord = 0;
-			y_coord = 0;
+			status_msg("Sequence complete!...");
+
+			// If these are 0 then gantry will send z axis down first...
+			x_coord = x_coord_og;
+			y_coord = y_coord_og;
 			z_coord = 0;
 			z_found = 0;
             break;
@@ -619,7 +635,9 @@ void decode_coordinate(const char* msg) {
 	
 	x_coord = result[0];
 	y_coord = result[1];
-	
+
+	x_coord_og = result[0];
+	y_coord_og = result[1];
 	
 	char output[50];
     sprintf(output, "x: %d y: %d", result[0], result[1]);
