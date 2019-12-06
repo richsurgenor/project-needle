@@ -53,7 +53,7 @@ MANUAL = 2
 DEFAULT_MODE = AUTOMATIC
 BORDER_SIZE = 10
 HALF_BORDER_SIZE = BORDER_SIZE/2
-FPS = 10
+FPS = 5
 GFX_ON_START = True
 GFX_AUTO_ROTATE = True
 
@@ -157,7 +157,7 @@ def set_forwarding_settings():
 
     CLIP_RAILS_THROUGH_NUMPY = True
 
-FAKE_INPUT_IMG = 1
+FAKE_INPUT_IMG = 0
 
 if FAKE_INPUT_IMG:
     FAKE_INPUT_IMG_NAME = "./test_images/jackson.jpg"
@@ -353,7 +353,7 @@ class PreviewThread(QThread):
     def run(self):
         while True:
             self.next_frame_slot()
-            time_slept = 1000
+            time_slept = time_slept = int((float(1)/FPS) * 1000)
             self.msleep(time_slept) # TODO: make this settable
             qApp.processEvents()
 
@@ -1307,7 +1307,8 @@ class ObjectRotater(QObject):
                 rotated = rotated + 5
                 QThread.msleep(25)
         else:
-            print("status changed signal received")
+            #print("status changed signal received")
+            pass
 
 
     # def set_moving_axis(self, axis):
