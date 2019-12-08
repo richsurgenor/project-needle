@@ -6,7 +6,7 @@ from OpenGL.GL import *
 def MTL(filename):
     contents = {}
     mtl = None
-    for line in open(filename, "r"):
+    for line in open("assets/" + filename, "r"):
         if line.startswith('#'): continue
         values = line.split()
         if not values: continue

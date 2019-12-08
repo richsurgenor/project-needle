@@ -17,7 +17,8 @@
 Servo myservo;  // create servo object to control a servo
 
 static int x_coord, y_coord, z_coord = 0;
-static int x_coord_og, y_coord_og = 0;
+static int x_coord_og = 0;
+static int y_coord_og = 0;
 static int z_found = 0;
 static bool enable = 0;
 
