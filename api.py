@@ -143,11 +143,11 @@ def get_direction(current, target):
     else:
         return -1
 
-STEPS_TO_Y_HOME = 3875 # 155mm
+STEPS_TO_Y_HOME = 0 # 155mm
 NEEDLE_X_PROJ_STEPS = 2175
 NEEDLE_Y_PROJ_STEPS = 300
 NEEDLE_Z_PROJ_STEPS = 250
-NEEDLE_Z_INSERTION_DEPTH = 250
+NEEDLE_Z_INSERTION_DEPTH = 1500
 class GantryMock(threading.Thread):
     """
     simulate gantry
@@ -223,7 +223,7 @@ class GantryMock(threading.Thread):
     def move_back_from_il(self):
         self.send_cmd(CMD_STATUS_MSG, "Moving Z back from IL...")
         # lets say 1500 steps
-        for i in range(0, 1500-NEEDLE_Z_PROJ_STEPS+NEEDLE_Z_INSERTION_DEPTH):
+        for i in range(0, 1500):
             self.send_cmd(CMD_POSITION_UPDATE, "21")
             time.sleep(0.001)
         self.send_cmd(CMD_STATUS_MSG, "Moving X back from IL...")
@@ -249,14 +249,14 @@ class GantryMock(threading.Thread):
 
     def inject_needle(self):
         #todo: move only needle tip instead of entire model
-        self.send_cmd(CMD_STATUS_MSG, "Injecting needle...")
+        self.send_cmd(CMD_STATUS_MSG, "Injecting Needle...")
         for i in range(0, NEEDLE_Z_INSERTION_DEPTH):
             self.send_cmd(CMD_POSITION_UPDATE, "20")
             time.sleep(0.001)
 
     def pull_needle(self):
         #todo: move only needle tip instead of entire model
-        self.send_cmd(CMD_STATUS_MSG, "Pulling needle...")
+        self.send_cmd(CMD_STATUS_MSG, "Pulling Needle...")
         for i in range(0, NEEDLE_Z_INSERTION_DEPTH):
             self.send_cmd(CMD_POSITION_UPDATE, "21")
             time.sleep(0.001)

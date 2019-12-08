@@ -26,11 +26,7 @@ from common import log_image
 from traceback import print_tb
 import platform
 from OpenGL import GL
-from OpenGL.GL import shaders
-#from OpenGL.raw.GL.ARB.vertex_array_object import glGenVertexArrays, \
-#                                                  glBindVertexArray
-#from OpenGL.raw.GL.ARB.vertex_buffer_object import *
-from OpenGL.raw.GL.APPLE.vertex_array_object import *
+#from OpenGL.raw.GL.APPLE.vertex_array_object import *
 from OpenGL import GLU
 from math import pow, sqrt, asin, pi
 
@@ -122,7 +118,7 @@ def set_forwarding_settings():
 
     GANTRY_ON = 1
     MOCK_MODE_IMAGE_PROCESSING = 0
-    MOCK_MODE_GANTRY = 1
+    MOCK_MODE_GANTRY = 0
 
     SAVE_RAWIMG = 1
 
@@ -157,10 +153,10 @@ def set_forwarding_settings():
 
     CLIP_RAILS_THROUGH_NUMPY = True
 
-FAKE_INPUT_IMG = 1
+FAKE_INPUT_IMG = 0
 
 if FAKE_INPUT_IMG:
-    FAKE_INPUT_IMG_NAME = "./test_images/jackson.jpg"
+    FAKE_INPUT_IMG_NAME = "./last_tests/male 23 cau.jpg"
     CAMERA_RESOLUTION_WIDTH = 1000#3280
     CAMERA_RESOLUTION_HEIGHT = 1000#2464
     GUI_IMAGE_SIZE_WIDTH = 500 #550  # 640
@@ -436,8 +432,6 @@ class QProcessedImageGroupBox(QGroupBox):
         self.image_label.img = None
 
     def get_pos(self, event):
-        # TODO: Reverse scaling to get closet coordinates...
-
         if not self.image_label.img:
             print('User tried to click point before any existed.')
             return
@@ -518,11 +512,9 @@ class QImageLabel(QLabel):
     def __init__(self, _, img):
         super(QLabel, self).__init__(_)
         self.setFrameShape(QFrame.Panel)
-        #self.setFrameStyle("background-color: rgb(255, 255, 255")
         self.setFrameShadow(QFrame.Raised)
         self.setLineWidth(3)
         self.setMidLineWidth(3)
-        #self.mousePressEvent = self.getPos
         self.img = img
         self.setSizePolicy(QSizePolicy.Fixed,QSizePolicy.Fixed)
         self.done = False
@@ -537,7 +529,6 @@ class QImageLabel(QLabel):
 
         if self.done:
             p.drawPixmap(QPoint(HALF_BORDER_SIZE, HALF_BORDER_SIZE), self.img)
-        #print(self.img.size())
 
     def sizeHint(self):
         return QSize(GUI_IMAGE_SIZE_WIDTH + BORDER_SIZE, GUI_IMAGE_SIZE_HEIGHT + BORDER_SIZE)
@@ -547,11 +538,9 @@ class QInputBox(QLabel):
     def __init__(self, _, img):
         super(QLabel, self).__init__(_)
         self.setFrameShape(QFrame.Panel)
-        #self.setFrameStyle("background-color: rgb(255, 255, 255")
         self.setFrameShadow(QFrame.Raised)
         self.setLineWidth(3)
         self.setMidLineWidth(3)
-        #self.mousePressEvent = self.getPos
         self.img = img
         self.setSizePolicy(QSizePolicy.Fixed,QSizePolicy.Fixed)
         self.started = False
@@ -565,7 +554,6 @@ class QInputBox(QLabel):
 
         if self.started:
             p.drawPixmap(QPoint(HALF_BORDER_SIZE, HALF_BORDER_SIZE), self.img)
-        #print(self.img.size())
 
     def start(self):
         self.started = True
@@ -600,9 +588,10 @@ class QModeMenuWidget(QWidget):
         self.setLayout(self.checkboxes_layout)
 
     def mode_change_event(self, button):
+        self.parent.gfx_widget.window.gfx_widget.pic_enabled = False
         self.parent.output_box.reset()
-        #self.parent.gantry_status.showMessage("Gantry:   ")
-        #self.parent.processing_status.showMessage("Processing:   ")
+        self.parent.gantry_status.showMessage("Gantry:   ")
+        self.parent.processing_status.showMessage("Processing:   ")
         pass
 
 
@@ -894,6 +883,9 @@ class MainWindow(QMainWindow):
         #grayimg = cv2.imread("justin_python/justin4.jpg", 0)
         grayimg = cv2.cvtColor(raw, cv2.COLOR_RGB2GRAY) # TODO: may need to be different per camera
         clahe_img = self.processor.apply_clahe(grayimg)
+        self.gfx_widget.window.gfx_widget.change_image(clahe_img)
+        self.gfx_widget.window.gfx_widget.pic_enabled = True
+        self.gfx_widget.window.gfx_widget.update()
         # we gray now...
         height, width = clahe_img.shape
         bytes_per_line = width
@@ -989,14 +981,6 @@ class MainWindow(QMainWindow):
         # TODO: deem if this is a necessary functionality or if we will keep it in arduino code
 
     def close_event(self):
-        self.camera.stop()
-        #if self.
-        gc = self.status_thread.gc
-        if gc.gantry:
-            if gc.gantry.is_open:
-                self.status_thread.gc.gantry.close()
-                print("closed serial interface..")
-        time.sleep(1)
         qApp.exit()
 
     def settings_event(self):
@@ -1021,23 +1005,22 @@ STARTING_CAMERA_HEIGHT=0
 STARTING_CAMERA_DISTANCE=225 #900
 GANTRY_WIDTH = 152.0/2
 
-BOX_HEIGHT = 140.0/2
+BOX_HEIGHT = 100 #140.0/2
 STARTING_GANTRY_HEIGHT = 60.0
 
 GANTRY_DEPTH = 265.0/2 #673.0
 STARTING_GANTRY_DEPTH = GANTRY_DEPTH-(150.0)
 
 # Make each unit 1mm
-# Guessing gantry "box" is around 1ft x 2ft x 3ft ~ 1ft=300mm
 verticies = (
-    (GANTRY_WIDTH, -(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), -GANTRY_DEPTH),
-    (GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), -GANTRY_DEPTH),
-    (-GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), -GANTRY_DEPTH),
-    (-GANTRY_WIDTH, -(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), -GANTRY_DEPTH),
-    (GANTRY_WIDTH, -(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH),
-    (GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH),
-    (-GANTRY_WIDTH, -(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH),
-    (-GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH)
+    (GANTRY_WIDTH, -(BOX_HEIGHT), -GANTRY_DEPTH),
+    (GANTRY_WIDTH, (BOX_HEIGHT), -GANTRY_DEPTH),
+    (-GANTRY_WIDTH, (BOX_HEIGHT), -GANTRY_DEPTH),
+    (-GANTRY_WIDTH, -(BOX_HEIGHT), -GANTRY_DEPTH),
+    (GANTRY_WIDTH, -(BOX_HEIGHT), GANTRY_DEPTH),
+    (GANTRY_WIDTH, (BOX_HEIGHT), GANTRY_DEPTH),
+    (-GANTRY_WIDTH, -(BOX_HEIGHT), GANTRY_DEPTH),
+    (-GANTRY_WIDTH, (BOX_HEIGHT), GANTRY_DEPTH)
 )
 
 verticies = numpy.hstack(verticies).reshape(-1,3).astype(numpy.float32)
@@ -1051,47 +1034,47 @@ verticies = numpy.hstack(verticies).reshape(-1,3).astype(numpy.float32)
 
 
 vertex_buffer_data = [
-    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH, # red face
-    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
-    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
-    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
-    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
-    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
+    -GANTRY_WIDTH,-(BOX_HEIGHT),-GANTRY_DEPTH, # red face
+    -GANTRY_WIDTH,-(BOX_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH,-(BOX_HEIGHT),-GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT),-GANTRY_DEPTH,
 
-    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH, # green face
-    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
-    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
-    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
-    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
-    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT),-GANTRY_DEPTH, # green face
+    -GANTRY_WIDTH,-(BOX_HEIGHT),-GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT),-GANTRY_DEPTH,
+    -GANTRY_WIDTH,-(BOX_HEIGHT),-GANTRY_DEPTH,
 
-    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH, # blue face
-    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
-    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
-    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
-    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
-    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT), GANTRY_DEPTH, # blue face
+    -GANTRY_WIDTH,-(BOX_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH,-(BOX_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH,-(BOX_HEIGHT),-GANTRY_DEPTH,
 
-    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH, # yellow face
-    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
-    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
-    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
-    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
-    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT), GANTRY_DEPTH, # yellow face
+    GANTRY_WIDTH,-(BOX_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT), GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT), GANTRY_DEPTH,
 
-    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH, # light blue face
-    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
-    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
-    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
-    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT),-GANTRY_DEPTH,
-    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT), GANTRY_DEPTH, # light blue face
+    GANTRY_WIDTH, (BOX_HEIGHT),-GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT),-GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT),-GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT), GANTRY_DEPTH,
 
-    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH, # pink face
-    -GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
-    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
-    GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
-    -GANTRY_WIDTH, (BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH,
-    GANTRY_WIDTH,-(BOX_HEIGHT+STARTING_GANTRY_HEIGHT), GANTRY_DEPTH]
+    -GANTRY_WIDTH, (BOX_HEIGHT), GANTRY_DEPTH, # pink face
+    -GANTRY_WIDTH,-(BOX_HEIGHT), GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT), GANTRY_DEPTH,
+    GANTRY_WIDTH, (BOX_HEIGHT), GANTRY_DEPTH,
+    -GANTRY_WIDTH, (BOX_HEIGHT), GANTRY_DEPTH,
+    GANTRY_WIDTH,-(BOX_HEIGHT), GANTRY_DEPTH]
 
 vertex_buffer_data = numpy.array(vertex_buffer_data, dtype=numpy.float32)
 
@@ -1208,7 +1191,7 @@ def Cube():
     GL.glBegin(GL.GL_LINES)
     for edge in edges:
         for vertex in edge:
-            GL.glVertex3fv(verticies[vertex]+20)
+            GL.glVertex3fv(verticies[vertex])
     GL.glEnd()
 
 
@@ -1255,6 +1238,9 @@ class ObjectRotater(QObject):
         print("done init...")
 
     def status_changed_event(self):
+        """
+        Very rushed way to rotate the object as the gantry moves.
+        """
         #print('ROTATION EMIT! CURRENT THREAD: ' + self.parent.currentThread().objectName())
         msg = self.parent.main.gantry_status.currentMessage()
         if msg == "Gantry:   Moving X to IL...":
@@ -1268,21 +1254,6 @@ class ObjectRotater(QObject):
                 self.parent.gfx_widget.rotate_object(1, 5)
                 rotated = rotated + 5
                 QThread.msleep(25)
-            # to_rotate = 90
-            # rotated = 0
-            # while rotated < to_rotate:
-            #     self.parent.gfx_widget.rotate_object(0, 10)
-            #     rotated = rotated + 10
-            #     self.msleep(100)
-            # to_rotate = 90
-            # rotated = 0
-            # while rotated < to_rotate:
-            #     self.parent.gfx_widget.rotate_object(0, 10, True)
-            #     rotated = rotated + 10
-            #     self.msleep(100)
-            #self.parent.gfx_widget.rotate_object(1, 90)
-            #self.msleep(9000)
-
         elif msg == "Gantry:   Moving Z to IL...":
             #self.parent.gfx_widget.rotate_object(1, 90, True)
             to_rotate = 270
@@ -1292,6 +1263,21 @@ class ObjectRotater(QObject):
                 rotated = rotated + 5
                 QThread.msleep(25)
             pass
+        elif msg == "Gantry:   Injecting Needle...":
+            #print("WE ARE INJECTING")
+            to_rotate = 90
+            rotated = 0
+            while rotated < to_rotate:
+                self.parent.gfx_widget.rotate_object(2, 5, True)
+                rotated = rotated + 5
+                QThread.msleep(25)
+        elif msg == "Gantry:   Pulling Needle...":
+            to_rotate = 90
+            rotated = 0
+            while rotated < to_rotate:
+                self.parent.gfx_widget.rotate_object(2, 5)
+                rotated = rotated + 5
+                QThread.msleep(25)
         elif msg == "Gantry:   Moving Y back from IL...":
             to_rotate = 90
             rotated = 0
@@ -1299,7 +1285,6 @@ class ObjectRotater(QObject):
                 self.parent.gfx_widget.rotate_object(1, 5)
                 rotated = rotated + 5
                 QThread.msleep(25)
-
             QThread.msleep(2000)
             to_rotate = 270
             rotated = 0
@@ -1308,7 +1293,8 @@ class ObjectRotater(QObject):
                 rotated = rotated + 5
                 QThread.msleep(25)
         else:
-            print("status changed signal received")
+            #print("status changed signal received")
+            pass
 
 
     # def set_moving_axis(self, axis):
@@ -1379,7 +1365,7 @@ class GraphicsWidget(QWidget):
 
         vector_val = 350
         if ccw:
-            vector_val = -vector_val
+            self.window.gfx_widget.angle = -self.window.gfx_widget.angle
 
         if axis == 0:
             self.window.gfx_widget.ux = vector_val
@@ -1438,10 +1424,7 @@ class GfxWindow(QDialog):
         self.i = 1
 
         #self.gfx_widget.moveCube()
-
-    #def keyPressEvent(self, eventQKeyEvent):
-    #    eventQKeyEvent.
-    #    print("hi")
+        #self.gfx_widget.moveTexture()
 
     def mousePressEvent(self, event):
         pos = event.pos()
@@ -1501,6 +1484,8 @@ class GfxWindow(QDialog):
 GFX_WINDOW_WIDTH=600
 GFX_WINDOW_HEIGHT=600
 
+default_fovy = 120
+
 class OpenGLWidget(QOpenGLWidget):
 
     def __init__(self, window, parent, main):
@@ -1510,7 +1495,7 @@ class OpenGLWidget(QOpenGLWidget):
         self.main = main
         self.i = 0
         self.z = STARTING_CAMERA_DISTANCE
-        self.zoom = 120
+        self.zoom = default_fovy
         self.change = False
         self.rotation = False
 
@@ -1519,7 +1504,7 @@ class OpenGLWidget(QOpenGLWidget):
         self.uz = 0
         self.angle = 0
         self.CT = None
-        self.needle_position = [-GANTRY_WIDTH, STARTING_GANTRY_HEIGHT, -STARTING_GANTRY_DEPTH]
+        self.needle_position = [-GANTRY_WIDTH, STARTING_GANTRY_HEIGHT-35, -STARTING_GANTRY_DEPTH]
 
     def initializeGL(self):
 
@@ -1587,7 +1572,10 @@ class OpenGLWidget(QOpenGLWidget):
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.colorBuffer)
         GL.glBufferData(GL.GL_ARRAY_BUFFER, color_buffer_data.nbytes, color_buffer_data, GL.GL_STATIC_DRAW)
 
-        self.texture_data = cv2.imread("owl.jpg")
+        self.texture_data = cv2.imread("./clahe.jpg", 0)
+        self.texture_data_cropped = self.texture_data[0:999, 100:800] #crop
+        self.pic_enabled = False
+        #cv2.imwrite("cropped.jpg", self.texture_data)
 
         # vs = shaders.compileShader(VERTEX_SHADER, GL.GL_VERTEX_SHADER)
         # fs = shaders.compileShader(FRAGMENT_SHADER, GL.GL_FRAGMENT_SHADER)
@@ -1599,7 +1587,7 @@ class OpenGLWidget(QOpenGLWidget):
         GL.glClearColor(0.0, 1.0, 1.0, 0.0)
         GL.glMatrixMode(GL.GL_PROJECTION)
         GL.glLoadIdentity()
-        GLU.gluPerspective(120, (GFX_WINDOW_WIDTH / GFX_WINDOW_HEIGHT), 1, 4000.0)
+        GLU.gluPerspective(default_fovy, (GFX_WINDOW_WIDTH / GFX_WINDOW_HEIGHT), 1, 4000.0)
 
         #GL.glTranslatef(0.0, 0.0, -20)
 
@@ -1616,6 +1604,9 @@ class OpenGLWidget(QOpenGLWidget):
         self.angle = None
         self.CT = GL.glGetFloatv(GL.GL_MODELVIEW_MATRIX)
         self.obj = OBJ("assets/syringe.obj", swapyz=True)
+
+        self.d = 0
+        self.e = 0
 
         #GL.glEnable(GL.GL_DEPTH_TEST);
         #GL.glDepthFunc(GL.GL_LESS);
@@ -1662,15 +1653,6 @@ class OpenGLWidget(QOpenGLWidget):
             GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
             GL.glColor3d(0, 0, 0)
 
-            """
-            GL.glPushMatrix()
-            GL.glTranslatef(self.needle_position[0], self.needle_position[1], self.needle_position[2])
-            GL.glScalef(10, 10, 10)
-            GL.glRotatef(180, 0, 0, 0)
-            GL.glCallList(self.obj.gl_list)
-            GL.glPopMatrix()
-            """
-
             GL.glUseProgram(self.program)
 
             GL.glEnableVertexAttribArray(1)
@@ -1688,8 +1670,11 @@ class OpenGLWidget(QOpenGLWidget):
 
             GL.glEnable(GL.GL_TEXTURE_2D)
             GL.glTexEnvf(GL.GL_TEXTURE_ENV, GL.GL_TEXTURE_ENV_MODE, GL.GL_DECAL);
-
-            #start here
+            #
+            # #1.7434 aspect ratio
+            TEXTURE_WIDTH = GANTRY_WIDTH*2
+            TEXTURE_HEIGHT = GANTRY_DEPTH
+            # #start here
             self.texture = GL.glGenTextures(1)
             GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
             GL.glBindTexture(GL.GL_TEXTURE_2D, self.texture)
@@ -1697,35 +1682,45 @@ class OpenGLWidget(QOpenGLWidget):
             GL.glTexParameterf(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)
             GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST)
             GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_NEAREST)
-            GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB, get_effective_image_width(), get_effective_image_height(),
-                            0, GL.GL_RGB, GL.GL_UNSIGNED_BYTE, self.texture_data)
+            GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_LUMINANCE, 700, 1000,
+                             0, GL.GL_LUMINANCE, GL.GL_UNSIGNED_BYTE, self.texture_data_cropped)
             GL.glGenerateMipmap(GL.GL_TEXTURE_2D)
             GL.glActiveTexture(GL.GL_TEXTURE0)
-            #a = self.main.masked_img
+            # #a = self.main.masked_img
+            #
 
-            GL.glPushMatrix()
+            if self.pic_enabled:
+                GL.glPushMatrix()
 
-            GL.glTranslatef(0, STARTING_GANTRY_HEIGHT/2, 0)
-            GL.glRotatef(90, 0, 0, 0)
+                GL.glTranslatef(-GANTRY_WIDTH, -BOX_HEIGHT, 0)
+                GL.glRotatef(90, 0, 0, 0)
 
-            GL.glBegin(GL.GL_QUADS)
-            GL.glTexCoord(0, 0)
-            GL.glVertex2f(0, 0)
+                GL.glBegin(GL.GL_QUADS)
+                GL.glTexCoord(0, 0)
+                GL.glVertex2f(0, 0)
 
-            GL.glTexCoord(0, 1)
-            GL.glVertex2f(0, 1000) # height
+                GL.glTexCoord(0, 1)
+                GL.glVertex2f(0, TEXTURE_HEIGHT) # height
 
-            GL.glTexCoord(1, 1)
-            GL.glVertex2f(1000, 1000) # width, height
+                GL.glTexCoord(1, 1)
+                GL.glVertex2f(TEXTURE_WIDTH, TEXTURE_HEIGHT) # width, height
 
-            GL.glTexCoord(1, 0)
-            GL.glVertex2f(1000, 0) # width
+                GL.glTexCoord(1, 0)
+                GL.glVertex2f(TEXTURE_WIDTH, 0) # width
 
-            GL.glEnd()
-            GL.glPopMatrix()
+                GL.glEnd()
+                GL.glPopMatrix()
+
             GL.glDisable(GL.GL_TEXTURE_2D)
 
             Cube()
+
+            GL.glPushMatrix()
+            GL.glTranslatef(self.needle_position[0], self.needle_position[1], self.needle_position[2])
+            GL.glScalef(10, 10, 10)
+            GL.glRotatef(180, 0, 0, 0)
+            GL.glCallList(self.obj.gl_list)
+            GL.glPopMatrix()
 
             # GL.glPushMatrix()
             # GL.glTranslatef(self.i * 0.01, self.i * 0.01, 0)
@@ -1734,11 +1729,22 @@ class OpenGLWidget(QOpenGLWidget):
 
         #GL.glDrawArrays(GL.GL_TRIANGLES, 0, 3)
 
+    def change_image(self, img):
+        self.texture_data = img
+        self.texture_data_cropped = self.texture_data[0:999, 100:800]  # crop
+
     def moveCube(self):
         for x in range(0, 300):
             self.i = self.i - 1
             self.update()
-            self.parent.msleep(10)
+            QThread.msleep(10)
+            qApp.processEvents()
+
+    def moveTexture(self):
+        for x in range(0, 300):
+            self.d = self.d + 1
+            self.update()
+            QThread.msleep(100)
             qApp.processEvents()
 
     def changePerspective(self):
