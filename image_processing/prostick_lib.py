@@ -23,6 +23,8 @@ import scipy as sp
 import scipy.ndimage
 import image_processing.spooky_lib as grid
 from matplotlib import pyplot as plt
+from math import tan, atan
+
 
 def get_centers(image, nclusters, grid_horizontal, preprocessed=False, enable_gantry_rails=True):
     """
@@ -642,3 +644,79 @@ def extract_points(img):
     return list(zip(*np.where(img == 1)))
 
 
+def isolate_sharpie(img, mask_img, mask_t, adapt_t, c, grid_vertical, enable_gantry_rails):
+    """
+
+    :param img: An image with the sharpie in the fram
+    :param mask_img: The original image used to create the mask
+    :param mask_t: The threshold value used for the mask (0 to 255)
+    :param adapt_t: The threshold value for adaptive thresholding to find the sharpie
+    :param c: Constant for adaptive thresholding
+    :param grid_vertical: The grid with veritcal lines (I think)
+    :param enable_gantry_rails: To remove the gantry rails
+    :return: The sharpie tip coordinate in pixels
+    """
+    #  Process the image
+    clahe_img = apply_clahe(img, 5.0, (8, 8))
+    mask = create_mask(mask_img, mask_t, 255)
+    plt.imshow(mask, 'gray')
+    threshold = int(adapt_t*255)
+    if threshold % 2 == 0:
+        threshold = threshold + 1
+    adapt_mean_th = adapt_thresh(clahe_img, 255, threshold, c)
+    # plt.imshow(adapt_mean_th, 'gray')
+
+    #  Apply the mask
+    mask_grid = grid_mask(grid_vertical, enable_gantry_rails)
+    masked_img = apply_mask(adapt_mean_th, mask)
+    masked_img = (np.logical_and(mask_grid, masked_img)) + np.logical_not(mask_grid)
+    plt.imshow(masked_img, 'gray')
+
+    #  Extract the remaining points and remove any associated with the gantry rails
+    sharpie_pts = np.where(masked_img == 0)
+    temp_x = sharpie_pts[0][sharpie_pts[1] < 2400]
+    temp_y = sharpie_pts[1][sharpie_pts[1] < 2400]
+    temp_x = temp_x[temp_y > 700]
+    temp_y = temp_y[temp_y > 700]
+    combined = np.vstack((temp_x, temp_y))
+    minarray = combined[0]
+    idx = np.argmax(minarray)
+    xarray = combined[1]
+    yarray = combined[0]
+    sharpie_pos = [yarray[idx], xarray[idx]]
+    return sharpie_pos, mask, masked_img
+
+
+def calc_diff(needle_height, dist_to_skin, dist_to_target):
+    """
+    Calculates the difference between the location of the needle tip and the location
+    of the target in the x or y direction.  All parameters should be given in millimeters.
+    :param needle_height: from the top of the needle to the tip (in mm)
+    :param dist_to_skin: the distance from the tip of the needle to the arm (in mm)
+    :param dist_to_target: location (in mm) of the opposite home point
+    :return: the difference between the needle tip and target
+    """
+    total_height = needle_height + dist_to_skin
+    dist_to_needle = needle_height * tan(atan(dist_to_target / total_height))
+    return dist_to_target - dist_to_needle
+
+
+def needle_check(needle_height, dist_to_skin, dist_to_target, right_home_pt):
+    """
+    Calculates the distance of the needle tip away from the target in the x or y
+    direction.  The left home point (origin of the needle) is assumed to be at (0, 0).
+    If the target is past the midway point, then the diffference is negative, indicating
+    that the needle needs to move back towards the origin in the -x or -y direction.
+    :param needle_height: from the top of the needle to the tip (in mm)
+    :param dist_to_skin: the distance from the tip of the needle to the arm (in mm)
+    :param dist_to_target: the x or y coordinate of the target (in mm)
+    :param right_home_pt: location (in mm) of the opposite home point
+    :return: the difference between the needle tip and target
+    """
+    mid = right_home_pt / 2  # the midway point on the grid
+
+    if dist_to_target < mid:
+        diff = calc_diff(needle_height, dist_to_skin, dist_to_target)
+    else:
+        diff = - calc_diff(needle_height, dist_to_skin, (right_home_pt - dist_to_target))
+    return diff
