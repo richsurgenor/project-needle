@@ -153,7 +153,7 @@ def set_forwarding_settings():
 
     CLIP_RAILS_THROUGH_NUMPY = True
 
-FAKE_INPUT_IMG = 0
+FAKE_INPUT_IMG = 1
 
 if FAKE_INPUT_IMG:
     FAKE_INPUT_IMG_NAME = "./last_tests/male 23 cau.jpg"
