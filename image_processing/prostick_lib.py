@@ -3,10 +3,6 @@
     Justin Sutherland
     10/19/2019
 
-    File is structured simply as a large set of functions. This
-    is commonly known as a "library". No library card required.
-    This library shall be titled prostick_lib.py henceforth.
-
     Function library that contains all image processing functions
     such as thresholding, kmean, kmedoid, masking, etc. Any future
     functions for the coordinate system logic will reside in a separate
