@@ -1,39 +1,7 @@
-from math import tan, atan
-
-
-def calc_diff(needle_height, dist_to_skin, dist_to_target):
-    """
-    Calculates the difference between the location of the needle tip and the location
-    of the target in the x or y direction.  All parameters should be given in millimeters.
-    :param needle_height: from the top of the needle to the tip (in mm)
-    :param dist_to_skin: the distance from the tip of the needle to the arm (in mm)
-    :param dist_to_target: location (in mm) of the opposite home point
-    :return: the difference between the needle tip and target
-    """
-    total_height = needle_height + dist_to_skin
-    dist_to_needle = needle_height * tan(atan(dist_to_target / total_height))
-    return dist_to_target - dist_to_needle
-
-
-def needle_check(needle_height, dist_to_skin, dist_to_target, right_home_pt):
-    """
-    Calculates the distance of the needle tip away from the target in the x or y
-    direction.  The left home point (origin of the needle) is assumed to be at (0, 0).
-    If the target is past the midway point, then the diffference is negative, indicating
-    that the needle needs to move back towards the origin in the -x or -y direction.
-    :param needle_height: from the top of the needle to the tip (in mm)
-    :param dist_to_skin: the distance from the tip of the needle to the arm (in mm)
-    :param dist_to_target: the x or y coordinate of the target (in mm)
-    :param right_home_pt: location (in mm) of the opposite home point
-    :return: the difference between the needle tip and target
-    """
-    mid = right_home_pt / 2  # the midway point on the grid
-
-    if dist_to_target < mid:
-        diff = calc_diff(needle_height, dist_to_skin, dist_to_target)
-    else:
-        diff = - calc_diff(needle_height, dist_to_skin, (right_home_pt - dist_to_target))
-    return diff
+"""
+Short script to test the needle verification function
+"""
+from image_processing.prostick_lib import needle_check
 
 
 if __name__ == "__main__":
